@@ -1511,6 +1511,27 @@ async function serveWorkspaceArtifact(request, url, env, route) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    // `/v2` is a directory-backed application. Without the trailing slash,
+    // browser-relative links such as `admin/` resolve against `/` and can
+    // accidentally open the v1 workspace. Canonicalize before serving any
+    // v2 bytes so every browser, including ChatGPT's, stays in this sprint.
+    if (
+      (request.method === "GET" || request.method === "HEAD") &&
+      url.hostname === "rally.agent9.dev" &&
+      url.pathname === WEBMCP_PATH_PREFIX
+    ) {
+      const canonical = new URL(url);
+      canonical.pathname = `${WEBMCP_PATH_PREFIX}/`;
+      return new Response(null, {
+        status: 308,
+        headers: {
+          "cache-control": "public, max-age=300",
+          location: canonical.href,
+        },
+      });
+    }
+
     const path = url.pathname.replace(/\/+$/, "") || "/";
 
     if (path === "/health") {

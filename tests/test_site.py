@@ -124,6 +124,15 @@ class TestProductSite(unittest.TestCase):
         self.assertIn('window.location.pathname.startsWith("/v2/")', admin_app)
         self.assertIn("magicLinkForm.hidden = true", admin_app)
         self.assertIn("privateBrowserLink.hidden = true", admin_app)
+        self.assertIn(
+            "This Google account does not have access to this Rally workspace. "
+            "Choose an approved account.",
+            admin_app,
+        )
+        self.assertIn(
+            "This is the correct page. Rally stays visible inside ChatGPT’s browser",
+            admin_html,
+        )
         self.assertNotIn("rally_stage_challenge_song", public_app + admin_app)
         self.assertNotIn("rally_stage_insights_draft", public_app + admin_app)
         self.assertNotIn("rally_stage_connector_plan", public_app + admin_app)

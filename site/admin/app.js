@@ -177,6 +177,8 @@
     connection_changed: "The connection changed while Rally was working. Refresh the card and try again.",
     disconnect_existing_connection: "Disconnect the existing connection before authorizing a replacement.",
     oauth_in_progress: "A previous connection request is still pending. Cancel that safe handshake before starting again.",
+    "this account is not approved for Rally": "This Google account does not have access to this Rally workspace. Choose an approved account.",
+    "this Google Workspace is not approved": "This Google Workspace does not have access to Rally. Choose an approved account.",
     "email address is already assigned": "That email address already belongs to a Rally teammate.",
     "could not create teammate": "Rally could not save this teammate securely. Try again in a moment.",
     "could not read teammates": "Rally could not load this workspace’s teammates.",

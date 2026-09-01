@@ -201,6 +201,16 @@ assert.equal(
   "https://rally-webmcp.pages.dev/admin/app.js",
 );
 
+const canonicalV2Response = await worker.fetch(new Request(
+  "https://rally.agent9.dev/v2?source=chatgpt",
+), {}, {});
+assert.equal(canonicalV2Response.status, 308);
+assert.equal(
+  canonicalV2Response.headers.get("location"),
+  "https://rally.agent9.dev/v2/?source=chatgpt",
+);
+assert.equal(canonicalV2Response.headers.get("cache-control"), "public, max-age=300");
+
 const doubleSlashResponse = await worker.fetch(new Request(
   "https://rally.agent9.dev/v2//example.com/owned",
 ), {}, {});

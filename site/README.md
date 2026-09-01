@@ -50,9 +50,12 @@ The public A2A v1.0 discovery document lives at
 `.well-known/agent-card.json`. It intentionally advertises only the deployed
 commission skill and contains security scheme names, never credentials.
 
-`app.js` also feature-detects the official WebMCP `document.modelContext` API
-and registers three bounded tools for the human-present browser experience:
-live-run search, public verification inspection, and governed job drafting.
-The draft only populates the visible setup dialog and mail link; it never sends,
-stores, connects, or authorizes anything without the person's action. See
+The public `app.js` feature-detects the official WebMCP
+`document.modelContext` API and registers two bounded, read-only tools for
+public run search and verification inspection. After Rally sign-in, the admin
+page registers five workspace tools that prepare the visible job form, start
+that exact form, find and open jobs, or navigate to a connection. Preparing a
+Ruflo research job visibly arms the run-only reserve; starting remains a
+separate consequential tool call. No site tool enters credentials or grants a
+provider permission. See
 [`docs/WEBMCP.md`](../docs/WEBMCP.md) for the complete contract and demo flow.

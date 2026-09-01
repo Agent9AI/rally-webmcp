@@ -7,11 +7,12 @@
 **Devpost title:** Rally for WebMCP
 
 **Subtitle:** Accountable browser collaboration
+
 **Repository:** `rally-webmcp`
 
 Rally for WebMCP turns a browser page into a shared, governed launch room. A
-person and a browser agent can inspect evidence, prepare an artifact, edit the
-same visible plan, review the human's revision, and stage a Cloudflare preview.
+person and a browser agent can prepare an artifact, edit the same visible plan,
+review the human's revision, and stage governed downstream work.
 The agent never receives a hidden path around the person's final decision.
 
 The challenge deadline is **September 3, 2026 at 1:00 PM Pacific / 4:00 PM
@@ -20,16 +21,15 @@ release clock: <https://webmcp.devpost.com/rules>.
 
 ## The demonstration
 
-> Ask Rally's browser tools to create a WebMCP-native launch experience,
-> generate its original theme song with Lyria 3 Pro, preserve the human-agent
-> revision trail, and stage a real Cloudflare preview. The person edits and
-> confirms the consequential steps.
+> Ask Rally's browser tools to stage an original WebMCP song, an Agent9
+> Insights article, and a governed MCP connector plan in one visible studio.
+> The person edits the page and asks the agent to review that exact revision.
 
 The final sub-three-minute demo should show one continuous workflow:
 
-1. The browser agent inspects a real public Rally run and its verification
-   record through structured tools instead of pixel guessing.
-2. It stages a WebMCP Challenge song task in the visible Rally interface. The
+1. Show ChatGPT's **Available site tools** and the four top-level imperative
+   `rally_webmcp_*` registrations.
+2. The agent stages a WebMCP Challenge song task in the visible Rally interface. The
    brief accurately explains WebMCP, Rally's browser tools, the separate MCP
    connector gateway, and A2A handoffs.
 3. The person edits the task. Rally records only the bounded page interaction:
@@ -37,13 +37,13 @@ The final sub-three-minute demo should show one continuous workflow:
 4. The agent reads the exact visible revision back as untrusted content and
    checks the Lyria model pin, originality boundary, connector accuracy,
    provenance receipt, and cross-family verification rule.
-5. After human confirmation, Rally's existing media boundary generates the song
-   with `lyria-3-pro-preview`; another model family verifies the complete MP3.
-6. The browser agent prepares a fixed-scope Cloudflare Pages preview plan. The
-   person reviews the target, branch, asset manifest, and permissions, then
-   explicitly launches it through Rally's authenticated deployment executor.
-7. Rally returns the public preview URL, asset hashes, deployment ID, and the
-   collaboration trail as one receipt.
+5. It stages the Agent9 Insights draft and shows the truthful future route:
+   human approval, one allowlisted n8n MCP workflow, and an EmDash `journal`
+   draft on Cloudflare Workers + D1. The page does not execute that route.
+6. It stages a fixed-profile MCP admission plan and makes the boundary explicit:
+   WebMCP is the page surface; Rally's server-side gateway connects MCP servers.
+7. End on the page-local semantic trail and effect flags: generated,
+   transmitted, stored, published, and connected all remain `false`.
 
 ## Why this is genuinely WebMCP-native
 
@@ -56,7 +56,7 @@ The workflow contains the turn-taking that ordinary form filling lacks:
 
 ```text
 agent stages v1 → human edits v2 → agent reads v2 → agent reviews v3
-       → human confirms → Rally executes → independent verifier checks
+       → human retains the downstream decision
 ```
 
 Rally uses three adjacent protocols without conflating them:
@@ -97,15 +97,15 @@ redacted receipt.
 
 `baseline/all-things-agentic-2026` points to commit `cf2e346`, the clean Rally
 snapshot before this derivative work. The original `/Users/terry/rally`
-worktree and remote remain untouched. This repository's source remote has a
-disabled push URL until a new `Agent9AI/rally-webmcp` remote is created.
+worktree and remote remain untouched. This repository now publishes to
+<https://github.com/Agent9AI/rally-webmcp>; its `rally-source` push URL remains
+disabled so the derivative cannot overwrite the original Rally repository.
 
 ```text
 rally-webmcp/
 ├── site/
-│   ├── app.js                 WebMCP handlers, visible state, trace
-│   ├── index.html             launch/song collaboration interface
-│   └── styles.css             shared-state and receipt presentation
+│   ├── webmcp/                dedicated four-tool judge studio
+│   └── app.js                 disclosed baseline Rally page tools
 ├── src/
 │   ├── media.py               bounded Lyria generation + receipt
 │   ├── runner.py              deterministic execution authority
@@ -113,6 +113,7 @@ rally-webmcp/
 ├── cloud/                     authenticated control plane + connector gateway
 ├── tests/
 │   ├── test_webmcp_runtime.mjs handler-level browser contract harness
+│   ├── test_webmcp_studio_runtime.mjs three-showcase runtime harness
 │   └── test_media.py          WebMCP-specific Lyria routing contract
 └── docs/
     ├── WEBMCP.md              public tool contract
@@ -122,46 +123,36 @@ rally-webmcp/
 
 ## Tool strategy
 
-The public surface stays small and non-overlapping. Current implemented slice:
+The dedicated judge surface stays small and non-overlapping:
 
 | Tool | Visible effect | External effect |
 |---|---|---|
-| `rally_list_public_runs` | Filters and synchronizes the public run console | None; reads public D1 projection |
-| `rally_inspect_public_run` | Opens bounded checklist and proof | None; reads public D1 projection |
-| `rally_draft_job` | Populates a generic governed commission | None; staged only |
-| `rally_stage_challenge_song` | Creates the visible WebMCP-specific Lyria brief and trace v1 | No generation, storage, or transmission |
-| `rally_review_visible_song_task` | Reads human edits as untrusted data and updates the review receipt | No generation, storage, or transmission |
+| `rally_webmcp_stage_song` | Stages an original Lyria commission | No generation, storage, or transmission |
+| `rally_webmcp_stage_insights` | Stages an Agent9 Insights article | No n8n/EmDash call, storage, or publication |
+| `rally_webmcp_stage_connector` | Stages one fixed-profile MCP admission plan | No URL, credential, discovery, authorization, or connection |
+| `rally_webmcp_review_visible_draft` | Reviews current human-editable page state and updates its receipt | No approval or downstream action |
 
-Next launch slice:
+The original page's three pre-existing tools and two early song tools are
+disclosed in `HACKATHON_CHANGES.md`; the Devpost URL targets `/webmcp/`.
 
-- `rally_stage_cloudflare_preview`: prepare an allowlisted Pages project,
-  preview branch, fixed asset manifest, and expected source revision;
-- a human-only **Deploy preview** control outside the tool call;
-- an authenticated executor that uses a narrowly scoped Cloudflare credential,
-  rejects stale revisions and arbitrary project names, and returns a deployment
-  receipt.
+## Downstream execution boundary
 
-The deployment tool must never accept an API token, arbitrary Worker source,
-shell command, account ID, or unrestricted target URL from the agent.
-
-## Cloudflare execution boundary
-
-WebMCP is the browser coordination surface; it should not hold Cloudflare
-credentials. The safe path is:
+WebMCP is the browser coordination surface; it does not hold provider or MCP
+credentials. A future external action must follow this path:
 
 ```text
-WebMCP stages fixed preview plan in visible Rally page
-  → human reviews target + manifest and clicks Deploy preview
-  → authenticated Rally control plane checks session and expected revision
-  → bounded executor deploys only the generated static bundle
-  → Pages deployment ID + preview URL + asset hashes return to Rally
+WebMCP stages visible work
+  → human reviews the exact revision
+  → authenticated Rally control plane checks authority + argument digest
+  → bounded Lyria or allowlisted MCP executor runs
+  → different model family or human verifies the receipt
 ```
 
-Use a dedicated preview project or branch. Production promotion is out of scope
-for the hackathon demo. Keep the Pages/Workers token out of frontend JavaScript
-and repository history. Prefer Wrangler for operator-driven deployment and use
-the Pages API only inside the authenticated executor when the browser workflow
-requires it.
+The studio itself is deployed to Cloudflare Pages at
+<https://rally.agent9.dev/webmcp/>. Its JavaScript intentionally contains no
+network or persistence primitive. Lyria generation, n8n execution, EmDash draft
+creation, and MCP connection remain separate work until each is implemented,
+tested, and truthfully demonstrated.
 
 ## Judging map
 
@@ -170,27 +161,28 @@ The challenge evaluates four criteria equally:
 | Criterion | Rally proof |
 |---|---|
 | WebMCP leverage | Typed tools, shared visible state, human edit read-back, bounded trace, abort handling, trust annotations |
-| Execution | Working live app, real Lyria MP3, real Cloudflare preview, runtime handler tests, receipts |
-| Potential impact | Safer human-agent deployment for teams that need proof and explicit authority |
-| Creativity and ambition | The product uses WebMCP to create, audit, soundtrack, and deploy its own WebMCP launch experience |
+| Execution | Working live Cloudflare app, four real tools, two runtime harnesses, green public CI |
+| Potential impact | Safer human-agent preparation for creative work, publishing, and connector onboarding |
+| Creativity and ambition | One page demonstrates creation, editorial work, and governance without conflating WebMCP with MCP or A2A |
 
 ## Release gates
 
 - [x] Independent `rally-webmcp` clone with full Rally history
-- [x] Baseline tag and push-disabled source remote
+- [x] Baseline tag and push-disabled original-Rally remote
 - [x] WebMCP Lyria staging + human edit read-back
 - [x] Page-local bounded collaboration trail
 - [x] Handler-level WebMCP runtime test
 - [x] WebMCP-specific Lyria routing and connector-accuracy test
-- [ ] Visible Cloudflare preview plan with revision fencing
-- [ ] Authenticated human-only preview deployment executor
+- [x] Dedicated three-showcase `/webmcp/` studio
+- [x] Production Cloudflare Pages URL and hardened WebMCP headers
+- [x] Public GitHub repository, detected Apache-2.0 license, baseline tag, and green CI
 - [ ] Real Lyria generation and independent listening receipt
-- [ ] Real Cloudflare preview URL and deployment receipt
+- [ ] Real human-approved n8n → EmDash draft receipt
+- [ ] Authenticated connector execution receipt
 - [ ] ChatGPT in-app browser tool discovery and invocation evidence
 - [ ] Ordinary browser fallback and responsive QA
-- [ ] Public `Agent9AI/rally-webmcp` repository with visible Apache-2.0 license
 - [ ] Public YouTube demo under 3:00 with clear audio
-- [ ] Devpost project saved no later than September 2
+- [ ] Devpost project fully **submitted**, not merely saved, no later than September 2
 - [ ] Final submission completed by September 3 at 10:00 AM Eastern
 - [ ] Freeze repo, live site, and Devpost entry through judging
 

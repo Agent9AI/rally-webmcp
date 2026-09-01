@@ -20,6 +20,11 @@
   const magicLinkEmail = document.querySelector("[data-magic-link-email]");
   const magicLinkSubmit = document.querySelector("[data-magic-link-submit]");
   const magicLinkStatus = document.querySelector("[data-magic-link-status]");
+  const magicKeyDivider = document.querySelector("[data-magic-key-divider]");
+  const magicKeyForm = document.querySelector("[data-magic-key-form]");
+  const magicKeyInput = document.querySelector("[data-magic-key-input]");
+  const magicKeySubmit = document.querySelector("[data-magic-key-submit]");
+  const magicKeyStatus = document.querySelector("[data-magic-key-status]");
   const emailSigninDivider = document.querySelector("[data-email-signin-divider]");
   const privateBrowserLink = document.querySelector("[data-private-browser-link]");
   const v2SigninNote = document.querySelector("[data-v2-signin-note]");
@@ -132,8 +137,12 @@
   const isV2Path = window.location.pathname === "/v2" || window.location.pathname.startsWith("/v2/");
 
   if (isV2Path) {
+    googleButton.hidden = true;
     emailSigninDivider.hidden = true;
-    magicLinkForm.hidden = true;
+    magicLinkForm.hidden = false;
+    magicKeyDivider.hidden = false;
+    magicKeyForm.hidden = false;
+    magicLinkSubmit.textContent = "Send one-time key";
     privateBrowserLink.hidden = true;
     v2SigninNote.hidden = false;
   }
@@ -1945,6 +1954,10 @@
   }
 
   function installGoogleSignIn() {
+    if (isV2Path) {
+      configurationNote.textContent = "One-time email keys expire after 10 minutes and work once.";
+      return;
+    }
     if (!configuredGoogle) {
       configurationNote.textContent = "Secure sign-in is waiting for the Rally Google web client.";
       return;
@@ -2620,17 +2633,42 @@
       const response = await fetch(`${safeApiBase()}/v1/auth/magic-link/request`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: magicLinkEmail.value }),
+        body: JSON.stringify({
+          email: magicLinkEmail.value,
+          return_path: isV2Path ? "/v2/admin/" : "/admin/",
+        }),
       });
       if (!response.ok) throw new Error("Secure email sign-in is temporarily unavailable.");
       magicLinkStatus.dataset.tone = "success";
-      magicLinkStatus.textContent = "Check your inbox. If this company email is invited, your secure link is on its way.";
+      magicLinkStatus.textContent = isV2Path
+        ? "Check your inbox. If this email is approved, copy its one-time key and paste it below."
+        : "Check your inbox. If this company email is invited, your secure link is on its way.";
       magicLinkEmail.value = "";
+      if (isV2Path) focusSoon(magicKeyInput);
     } catch (error) {
       magicLinkStatus.dataset.tone = "error";
       magicLinkStatus.textContent = error.message || "Secure email sign-in is temporarily unavailable.";
     } finally {
       magicLinkSubmit.disabled = false;
+    }
+  });
+
+  magicKeyForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!configuredApi || !magicKeyForm.reportValidity()) return;
+    const token = magicKeyInput.value.trim();
+    magicKeyInput.value = "";
+    magicKeySubmit.disabled = true;
+    magicKeyStatus.dataset.tone = "pending";
+    magicKeyStatus.textContent = "Verifying your one-time key…";
+    try {
+      await consumeMagicLink(token);
+    } catch (error) {
+      magicKeyStatus.dataset.tone = "error";
+      magicKeyStatus.textContent = error.message || "That key expired or was already used. Request a new one.";
+      focusSoon(magicKeyInput);
+    } finally {
+      magicKeySubmit.disabled = false;
     }
   });
 

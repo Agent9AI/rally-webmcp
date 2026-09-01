@@ -28,18 +28,27 @@
         <div class="vault-location" aria-label="Credential storage location"><span>Stored in Google Cloud</span><b>Ciphertext only · KMS protected</b></div>
         <div class="signin-action">
           <div data-google-button></div>
+          <p class="configuration-note" data-v2-signin-note hidden>Google’s button is blocked in this ChatGPT browser. Enter an approved Rally email, then paste the one-time key from the message below.</p>
           <div class="signin-divider" data-email-signin-divider><span>or use an invited company email</span></div>
           <form class="magic-link-form" data-magic-link-form>
-            <label for="magic-link-email">Approved business email</label>
+            <label for="magic-link-email">Approved Rally email</label>
             <div>
               <input id="magic-link-email" name="email" type="email" inputmode="email" autocomplete="email" maxlength="320" required placeholder="you@company.com" data-magic-link-email>
               <button type="submit" data-magic-link-submit>Send secure link</button>
             </div>
             <p class="magic-link-status" role="status" aria-live="polite" aria-atomic="true" data-magic-link-status></p>
           </form>
+          <div class="signin-divider magic-key-divider" data-magic-key-divider hidden><span>then paste the key from the email</span></div>
+          <form class="magic-link-form magic-key-form" data-magic-key-form hidden>
+            <label for="magic-link-key">One-time sign-in key</label>
+            <div>
+              <input id="magic-link-key" name="key" type="password" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" minlength="32" maxlength="256" required placeholder="Paste the key from your Rally email" data-magic-key-input>
+              <button type="submit" data-magic-key-submit>Enter Rally</button>
+            </div>
+            <p class="magic-link-status" role="status" aria-live="polite" aria-atomic="true" data-magic-key-status></p>
+          </form>
           <p class="configuration-note" role="status" aria-live="polite" aria-atomic="true" data-configuration-note>Checking secure sign-in…</p>
           <a class="signin-fallback" href="private-browser/" data-private-browser-link>Privacy browser or blocked pop-up? Use full-page sign-in <span aria-hidden="true">→</span></a>
-          <p class="configuration-note" data-v2-signin-note hidden>This is the correct page. Rally stays visible inside ChatGPT’s browser; sign in here, then use Site tools from ChatGPT’s address bar.</p>
         </div>
       </div>
       <aside class="security-receipt" aria-label="Credential security architecture">

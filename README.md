@@ -121,11 +121,12 @@ The Worker already implements:
 
 The original `rally.agent9.dev/` root still serves the v1 Pages project. The
 Worker now reserves `/v2/` for the derivative Pages project while reusing the
-same origin, Google sign-in, authenticated Rally APIs, D1, and R2.
+same origin, authenticated Rally APIs, D1, and R2.
 
-The `/v2/` sign-in screen intentionally uses Google sign-in. Email magic links
-continue to return to the standard v1 admin, so that alternate path is hidden in
-the v2 screen instead of pretending it will return to the WebMCP workspace.
+The `/v2/` sign-in screen uses Rally's existing allowlisted email proof because
+Google's embedded button may not run in ChatGPT's browser. The email includes a
+ten-minute, one-use key that the person pastes into the same Rally tab. A closed
+`return_path` enum keeps v1 links on `/admin/` and WebMCP links on `/v2/admin/`.
 
 ## Safety boundaries
 

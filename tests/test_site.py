@@ -122,7 +122,9 @@ class TestProductSite(unittest.TestCase):
         self.assertNotIn('"lead"', workspace_registration)
         self.assertIn("workspaceWebMcpLifecycle?.abort()", admin_app)
         self.assertIn('window.location.pathname.startsWith("/v2/")', admin_app)
-        self.assertIn("magicLinkForm.hidden = true", admin_app)
+        self.assertIn("googleButton.hidden = true", admin_app)
+        self.assertIn("magicLinkForm.hidden = false", admin_app)
+        self.assertIn("magicKeyForm.hidden = false", admin_app)
         self.assertIn("privateBrowserLink.hidden = true", admin_app)
         self.assertIn(
             "This Google account does not have access to this Rally workspace. "
@@ -130,8 +132,19 @@ class TestProductSite(unittest.TestCase):
             admin_app,
         )
         self.assertIn(
-            "This is the correct page. Rally stays visible inside ChatGPT’s browser",
+            "Google’s button is blocked in this ChatGPT browser",
             admin_html,
+        )
+        self.assertIn('type="password" autocomplete="one-time-code"', admin_html)
+        self.assertIn("Paste the key from your Rally email", admin_html)
+        self.assertIn("Send secure link", admin_html)
+        self.assertIn('magicLinkSubmit.textContent = "Send one-time key"', admin_app)
+        self.assertIn('return_path: isV2Path ? "/v2/admin/" : "/admin/"', admin_app)
+        self.assertIn("magicKeyInput.value = \"\"", admin_app)
+        self.assertIn("await consumeMagicLink(token)", admin_app)
+        self.assertIn(
+            "One-time email keys expire after 10 minutes and work once.",
+            admin_app,
         )
         self.assertNotIn("rally_stage_challenge_song", public_app + admin_app)
         self.assertNotIn("rally_stage_insights_draft", public_app + admin_app)

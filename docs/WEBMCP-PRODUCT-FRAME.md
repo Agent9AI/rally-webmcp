@@ -168,8 +168,10 @@ rally.agent9.dev/v2/
 
 Both paths reuse Rally's authenticated Worker endpoints. This leaves the v1
 static project untouched while giving the derivative a same-origin workspace.
-The v2 screen uses Google sign-in; the standard email magic-link route remains
-on v1 and is hidden from the v2 sign-in screen.
+The v2 screen uses Rally's allowlisted, one-use email proof because Google's
+embedded button may not run in ChatGPT's browser. The user pastes the emailed
+key into the same Rally tab; an exact return-path enum keeps v1 and v2 links on
+their respective admin routes.
 
 Before release:
 

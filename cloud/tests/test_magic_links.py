@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import datetime as dt
 import json
@@ -6,8 +7,15 @@ import httpx
 import pytest
 
 import control_plane
+import magic_links
 from auth_sessions import MemoryAuthSessionStore
-from magic_links import MemoryMagicLinkDeliveryQueue, MemoryMagicLinkStore
+from magic_links import (
+    MagicLinkError,
+    MemoryMagicLinkDeliveryQueue,
+    MemoryMagicLinkStore,
+    ResendMagicLinkMailer,
+    decode_magic_link_delivery,
+)
 from user_auth import UserIdentity
 
 NOW = dt.datetime.now(dt.UTC).replace(microsecond=0)
@@ -31,6 +39,15 @@ async def test_signed_link_is_email_workspace_bound_short_lived_and_one_time():
     consumed = await store.consume(token, "agent9-rally")
     assert consumed == identity
     assert await store.consume(token, "agent9-rally") is None
+
+    concurrent = await store.issue(identity, "agent9-rally")
+    await store.activate(concurrent)
+    raced = await asyncio.gather(
+        store.consume(concurrent, "agent9-rally"),
+        store.consume(concurrent, "agent9-rally"),
+    )
+    assert raced.count(identity) == 1
+    assert raced.count(None) == 1
 
     tampered = token[:-1] + ("A" if token[-1] != "A" else "B")
     assert await store.consume(tampered, "agent9-rally") is None
@@ -77,8 +94,86 @@ class RecordingMailer:
     def __init__(self):
         self.deliveries = []
 
-    async def send(self, email, token):
-        self.deliveries.append((email, token))
+    async def send(self, email, token, *, return_path="/admin/"):
+        self.deliveries.append((email, token, return_path))
+
+
+def encoded_delivery(*, version=1, return_path="/v2/admin/", include_return_path=True):
+    payload = {
+        "v": version,
+        "delivery_id": "A" * 32,
+        "email": "terry@agent9.dev",
+        "workspace_id": "agent9-rally",
+        "expires_at": int((NOW + dt.timedelta(minutes=10)).timestamp()),
+    }
+    if include_return_path:
+        payload["return_path"] = return_path
+    return base64.b64encode(json.dumps(payload).encode()).decode()
+
+
+def test_delivery_return_path_is_closed_and_legacy_messages_stay_on_v1():
+    v2 = decode_magic_link_delivery(encoded_delivery(), now=NOW)
+    legacy = decode_magic_link_delivery(
+        encoded_delivery(include_return_path=False),
+        now=NOW,
+    )
+
+    assert v2.return_path == "/v2/admin/"
+    assert legacy.return_path == "/admin/"
+    with pytest.raises(MagicLinkError, match="invalid sign-in return path"):
+        decode_magic_link_delivery(
+            encoded_delivery(return_path="https://attacker.example/"),
+            now=NOW,
+        )
+    with pytest.raises(MagicLinkError, match="invalid sign-in delivery message"):
+        decode_magic_link_delivery(encoded_delivery(version=True), now=NOW)
+    with pytest.raises(MagicLinkError, match="invalid sign-in delivery message"):
+        decode_magic_link_delivery(encoded_delivery(version=2), now=NOW)
+
+
+@pytest.mark.asyncio
+async def test_resend_message_contains_v2_link_and_copyable_one_time_key(monkeypatch):
+    store = MemoryMagicLinkStore(SIGNING_KEY, clock=lambda: NOW)
+    token = await store.issue(
+        UserIdentity(uid="email:user", email="terry@agent9.dev"),
+        "agent9-rally",
+    )
+    captured = {}
+
+    class AcceptedResponse:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    def accept(request, timeout):
+        captured["payload"] = json.loads(request.data)
+        captured["timeout"] = timeout
+        return AcceptedResponse()
+
+    monkeypatch.setattr(magic_links.urllib.request, "urlopen", accept)
+    mailer = ResendMagicLinkMailer(
+        "re_test_key",
+        "Rally <rally@updates.agent9.dev>",
+        "https://rally.agent9.dev/admin/",
+    )
+    await mailer.send("terry@agent9.dev", token, return_path="/v2/admin/")
+
+    assert captured["timeout"] == 15
+    assert f"https://rally.agent9.dev/v2/admin/#rally-magic-link={token}" in captured[
+        "payload"
+    ]["text"]
+    assert token in captured["payload"]["html"]
+    assert "same ChatGPT browser tab" in captured["payload"]["text"]
+    with pytest.raises(MagicLinkError, match="invalid sign-in return path"):
+        await mailer.send(
+            "terry@agent9.dev",
+            token,
+            return_path="https://attacker.example/",
+        )
 
 
 @pytest.mark.asyncio
@@ -103,18 +198,39 @@ async def test_magic_link_request_is_nondisclosing_and_uses_existing_session_exc
         ) as client:
             approved = await client.post(
                 "/v1/auth/magic-link/request",
-                json={"email": "  Terry@Agent9.dev "},
+                json={
+                    "email": "  Terry@Agent9.dev ",
+                    "return_path": "/v2/admin/",
+                },
                 headers={"x-forwarded-for": "203.0.113.42"},
             )
             unknown = await client.post(
                 "/v1/auth/magic-link/request",
-                json={"email": "unknown@example.com"},
+                json={
+                    "email": "unknown@example.com",
+                    "return_path": "/v2/admin/",
+                },
+                headers={"x-forwarded-for": "203.0.113.42"},
+            )
+            default_v1 = await client.post(
+                "/v1/auth/magic-link/request",
+                json={"email": "imterryim@gmail.com"},
                 headers={"x-forwarded-for": "203.0.113.42"},
             )
             assert approved.status_code == unknown.status_code == 202
+            assert default_v1.status_code == 202
             assert approved.json() == unknown.json()
             assert "approved" in approved.json()["detail"].lower()
-            assert [item.email for item in queue.deliveries] == ["terry@agent9.dev", ""]
+            assert [item.email for item in queue.deliveries] == [
+                "terry@agent9.dev",
+                "",
+                "imterryim@gmail.com",
+            ]
+            assert [item.return_path for item in queue.deliveries] == [
+                "/v2/admin/",
+                "/v2/admin/",
+                "/admin/",
+            ]
             delivery = queue.deliveries[0]
             encoded = base64.b64encode(
                 json.dumps(
@@ -123,6 +239,7 @@ async def test_magic_link_request_is_nondisclosing_and_uses_existing_session_exc
                         "delivery_id": delivery.delivery_id,
                         "email": delivery.email,
                         "workspace_id": delivery.workspace_id,
+                        "return_path": delivery.return_path,
                         "expires_at": int(delivery.expires_at.timestamp()),
                     }
                 ).encode()
@@ -134,8 +251,9 @@ async def test_magic_link_request_is_nondisclosing_and_uses_existing_session_exc
             )
             assert pushed.status_code == 200
             assert len(mailer.deliveries) == 1
-            email, token = mailer.deliveries[0]
+            email, token, return_path = mailer.deliveries[0]
             assert email == "terry@agent9.dev"
+            assert return_path == "/v2/admin/"
 
             consumed = await client.post(
                 "/v1/auth/magic-link/consume", json={"token": token}
@@ -166,6 +284,13 @@ async def test_magic_link_request_is_nondisclosing_and_uses_existing_session_exc
                 content=oversized_chunks(),
                 headers={"Content-Type": "application/json"},
             )
+            invalid_return = await client.post(
+                "/v1/auth/magic-link/request",
+                json={
+                    "email": "terry@agent9.dev",
+                    "return_path": "https://attacker.example/",
+                },
+            )
 
         assert exchanged.status_code == 200
         assert account.status_code == 200
@@ -176,6 +301,7 @@ async def test_magic_link_request_is_nondisclosing_and_uses_existing_session_exc
         assert replay.status_code == 401
         assert oversized.status_code == 413
         assert oversized_chunked.status_code == 413
+        assert invalid_return.status_code == 422
         assert token not in repr(magic_store._links)
         assert code not in repr(auth_store._codes)
         assert session not in repr(auth_store._sessions)

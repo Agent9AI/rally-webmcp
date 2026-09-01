@@ -485,6 +485,7 @@ class MagicLinkRequestInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     email: str = Field(min_length=1, max_length=320)
+    return_path: Literal["/admin/", "/v2/admin/"] = "/admin/"
 
 
 class MagicLinkConsumeInput(BaseModel):
@@ -1044,7 +1045,11 @@ async def request_magic_link(
     try:
         permitted = await get_magic_link_store().reserve_request(rate_subject)
         if permitted:
-            await get_magic_link_queue().publish(approved, _magic_link_workspace_id())
+            await get_magic_link_queue().publish(
+                approved,
+                _magic_link_workspace_id(),
+                return_path=body.return_path,
+            )
             print(json.dumps({"event": "magic_link_queued"}))
     except MagicLinkError as exc:
         print(json.dumps({"event": "magic_link_request_failed", "reason": str(exc)}))
@@ -1107,7 +1112,11 @@ async def deliver_magic_link(
             delivery_id=delivery.delivery_id,
             expires_at=delivery.expires_at,
         )
-        await get_magic_link_mailer().send(approved, token)
+        await get_magic_link_mailer().send(
+            approved,
+            token,
+            return_path=delivery.return_path,
+        )
         await store.activate(token)
     except MagicLinkError as exc:
         if token:

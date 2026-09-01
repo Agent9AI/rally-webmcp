@@ -13,6 +13,7 @@ import os
 import re
 import secrets
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import asdict, dataclass
 from typing import Any, Final, Protocol
@@ -33,6 +34,7 @@ _LINK_TTL_SECONDS: Final = 10 * 60
 _RATE_WINDOW_SECONDS: Final = 15 * 60
 _EMAIL_RATE_LIMIT: Final = 5
 _GLOBAL_RATE_LIMIT: Final = 10_000
+_RETURN_PATHS: Final = frozenset({"/admin/", "/v2/admin/"})
 
 
 def _utc_now() -> dt.datetime:
@@ -94,10 +96,17 @@ class MagicLinkDelivery:
     email: str
     workspace_id: str
     expires_at: dt.datetime
+    return_path: str = "/admin/"
 
 
 class MagicLinkDeliveryQueue(Protocol):
-    async def publish(self, email: str | None, workspace_id: str) -> None: ...
+    async def publish(
+        self,
+        email: str | None,
+        workspace_id: str,
+        *,
+        return_path: str = "/admin/",
+    ) -> None: ...
 
 
 class MemoryMagicLinkDeliveryQueue:
@@ -107,13 +116,21 @@ class MemoryMagicLinkDeliveryQueue:
         self._clock = clock
         self.deliveries: list[MagicLinkDelivery] = []
 
-    async def publish(self, email: str | None, workspace_id: str) -> None:
+    async def publish(
+        self,
+        email: str | None,
+        workspace_id: str,
+        *,
+        return_path: str = "/admin/",
+    ) -> None:
+        return_path = _validated_return_path(return_path)
         self.deliveries.append(
             MagicLinkDelivery(
                 delivery_id=secrets.token_urlsafe(24),
                 email=email or "",
                 workspace_id=workspace_id,
                 expires_at=self._clock() + dt.timedelta(seconds=_LINK_TTL_SECONDS),
+                return_path=return_path,
             )
         )
 
@@ -136,12 +153,23 @@ class PubSubMagicLinkDeliveryQueue:
         self.publisher = publisher
         self.topic_path = self.publisher.topic_path(project_id, topic_id)
 
-    async def publish(self, email: str | None, workspace_id: str) -> None:
+    async def publish(
+        self,
+        email: str | None,
+        workspace_id: str,
+        *,
+        return_path: str = "/admin/",
+    ) -> None:
+        return_path = _validated_return_path(return_path)
         payload = {
+            # Keep the original envelope version during rolling deploys. The
+            # previous reader ignores this optional field; the new reader
+            # defaults it for messages that were already queued.
             "v": 1,
             "delivery_id": secrets.token_urlsafe(24),
             "email": email or "",
             "workspace_id": workspace_id,
+            "return_path": return_path,
             "expires_at": int(
                 (_utc_now() + dt.timedelta(seconds=_LINK_TTL_SECONDS)).timestamp()
             ),
@@ -168,8 +196,11 @@ def decode_magic_link_delivery(encoded: str, *, now: dt.datetime | None = None) 
         expires = int(payload["expires_at"])
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
         raise MagicLinkError("invalid sign-in delivery message") from exc
+    version = payload.get("v")
     if (
-        payload.get("v") != 1
+        not isinstance(version, int)
+        or isinstance(version, bool)
+        or version != 1
         or not isinstance(delivery_id, str)
         or not re.fullmatch(r"[A-Za-z0-9_-]{32}", delivery_id)
         or not isinstance(email, str)
@@ -178,11 +209,12 @@ def decode_magic_link_delivery(encoded: str, *, now: dt.datetime | None = None) 
         or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,95}", workspace_id)
     ):
         raise MagicLinkError("invalid sign-in delivery message")
+    return_path = _validated_return_path(payload.get("return_path", "/admin/"))
     current = now or _utc_now()
     expires_at = dt.datetime.fromtimestamp(expires, tz=dt.UTC)
     if expires_at <= current or expires_at > current + dt.timedelta(seconds=_LINK_TTL_SECONDS):
         raise MagicLinkError("sign-in delivery expired")
-    return MagicLinkDelivery(delivery_id, email, workspace_id, expires_at)
+    return MagicLinkDelivery(delivery_id, email, workspace_id, expires_at, return_path)
 
 
 class MemoryMagicLinkStore:
@@ -434,11 +466,29 @@ class ResendMagicLinkMailer:
             raise MagicLinkError("Resend is not configured")
         self.api_key = api_key
         self.sender = sender
-        self.admin_url = admin_url.rstrip("/") + "/"
+        parsed = urllib.parse.urlsplit(admin_url)
+        if (
+            parsed.scheme != "https"
+            or not parsed.netloc
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise MagicLinkError("Rally sign-in URL is not configured")
+        self.admin_origin = urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
 
-    async def send(self, email: str, token: str) -> None:
-        link = f"{self.admin_url}#rally-magic-link={token}"
+    async def send(
+        self,
+        email: str,
+        token: str,
+        *,
+        return_path: str = "/admin/",
+    ) -> None:
+        return_path = _validated_return_path(return_path)
+        link = f"{self.admin_origin}{return_path}#rally-magic-link={token}"
         safe_link = html.escape(link, quote=True)
+        safe_token = html.escape(token)
         payload = {
             "from": self.sender,
             "to": [email],
@@ -446,6 +496,9 @@ class ResendMagicLinkMailer:
             "text": (
                 "Sign in to your Rally workspace:\n\n"
                 f"{link}\n\n"
+                "One-time sign-in key:\n"
+                f"{token}\n\n"
+                "For ChatGPT site tools, paste this key into the Rally page in the same ChatGPT browser tab.\n\n"
                 "This one-time link expires in 10 minutes. If you did not request it, ignore this email."
             ),
             "html": (
@@ -456,6 +509,8 @@ class ResendMagicLinkMailer:
                 f'<p><a href="{safe_link}" style="display:inline-block;padding:12px 20px;'
                 'border-radius:999px;background:#246bfd;color:#fff;text-decoration:none;font-weight:700">'
                 "Sign in to Rally</a></p>"
+                "<p><strong>Using ChatGPT site tools?</strong> Copy this one-time key and paste it into the Rally page in the same ChatGPT browser tab:</p>"
+                f'<p style="padding:12px;border-radius:10px;background:#f1f5fb;word-break:break-all;font-family:monospace">{safe_token}</p>'
                 "<p style=\"color:#617188;font-size:13px\">If you did not request this, ignore this email.</p>"
                 "</div>"
             ),
@@ -481,6 +536,12 @@ class ResendMagicLinkMailer:
                 raise MagicLinkError("could not deliver sign-in link") from exc
 
         await asyncio.to_thread(deliver)
+
+
+def _validated_return_path(value: Any) -> str:
+    if not isinstance(value, str) or value not in _RETURN_PATHS:
+        raise MagicLinkError("invalid sign-in return path")
+    return value
 
 
 def _validated_secret(value: str) -> bytes:

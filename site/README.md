@@ -1,6 +1,8 @@
 # Rally website
 
-The public site at `https://rally.agent9.dev` is deployed from this directory.
+The Rally for WebMCP sprint site at `https://rally-webmcp.pages.dev` is deployed
+from this directory. It intentionally reads Rally v1's explicitly public run
+projection from `https://rally.agent9.dev/v1/console`.
 Its marketing and evidence surfaces are static. The hosted `/admin/` frontend
 submits a credential only after verified Google sign-in, sends it directly over
 HTTPS to the separate Google Cloud control plane, and keeps identity, session,
@@ -27,7 +29,7 @@ python3 -m http.server 4173 --directory site
 Deploy to the existing Cloudflare Pages project with Wrangler after review:
 
 ```bash
-wrangler pages deploy site --project-name agent9-rally
+wrangler pages deploy site --project-name rally-webmcp
 ```
 
 `a2a-icon.svg` is an optimized copy of the

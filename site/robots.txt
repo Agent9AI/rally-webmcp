@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://rally.agent9.dev/sitemap.xml
+Sitemap: https://rally-webmcp.pages.dev/sitemap.xml

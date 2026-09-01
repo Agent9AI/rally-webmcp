@@ -13,6 +13,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
 import media  # noqa: E402
+import runner  # noqa: E402
 
 
 class MediaIntentTests(unittest.TestCase):
@@ -61,9 +62,10 @@ class MediaIntentTests(unittest.TestCase):
         self.assertTrue(request["prompt"].startswith(media.WEBMCP_CHALLENGE_PROMPT))
         self.assertIn("named, structured browser tools", request["prompt"])
         self.assertIn("n8n, Google Workspace, Slack, GitHub, Cloudflare, BigQuery", request["prompt"])
-        self.assertIn("allowlisted n8n workflow", request["prompt"])
+        self.assertIn("one n8n MCP workflow", request["prompt"])
         self.assertIn("EmDash journal draft", request["prompt"])
-        self.assertIn("supports A2A v1.0 outside-agent handoffs", request["prompt"])
+        self.assertIn("A2A v1.0 handles outside-agent handoffs", request["prompt"])
+        self.assertIn("do not turn the song into a sequence of provider names", request["prompt"])
         self.assertIn("Do not say WebMCP itself is Rally's background connector gateway", request["prompt"])
         self.assertNotIn("Tupac", request["prompt"])
         self.assertNotIn("Coolio", request["prompt"])
@@ -74,6 +76,18 @@ class MediaIntentTests(unittest.TestCase):
     def test_media_followup_can_inherit_prior_kind(self):
         request = media.detect_request("Make the chorus funnier", previous_kind="song")
         self.assertEqual(request["kind"], "song")
+
+    def test_direct_cli_uses_the_shared_media_boundary_unless_dry(self):
+        run = object()
+        cfg = {"media": {"enabled": True}}
+        with mock.patch.object(runner, "prepare_media", return_value={"status": "ready"}) as prepare:
+            self.assertIsNone(runner.prepare_direct_media(run, cfg, dry=True))
+            prepare.assert_not_called()
+            self.assertEqual(
+                runner.prepare_direct_media(run, cfg, dry=False),
+                {"status": "ready"},
+            )
+            prepare.assert_called_once_with(run, cfg)
 
 
 class VertexMediaTests(unittest.TestCase):

@@ -16,7 +16,6 @@ help:
 test:
 	@python3 -m unittest discover -s tests -v
 	@node tests/test_webmcp_runtime.mjs
-	@node tests/test_webmcp_studio_runtime.mjs
 
 cloud-test:
 	@uv run --project cloud ruff check cloud

@@ -1055,6 +1055,13 @@ def prepare_media(run: Run, cfg: Dict, task: Optional[str] = None,
     return receipt
 
 
+def prepare_direct_media(run: Run, cfg: Dict, dry: bool) -> Optional[Dict]:
+    """Apply the shared media boundary to a direct CLI commission."""
+    if dry:
+        return None
+    return prepare_media(run, cfg)
+
+
 def handle_commission(cfg: Dict, task: str, sender: str,
                       message_id: Optional[str] = None,
                       request_key: Optional[str] = None,
@@ -1554,6 +1561,10 @@ def main(argv: List[str]) -> int:
     if a.note:
         apply_human_note(run, a.note)
         run.save()
+    # Direct CLI commissions must cross the same bounded media boundary as
+    # email and dashboard commissions. This is idempotent for an already-ready
+    # prompt, so resuming a halted media run is safe.
+    prepare_direct_media(run, cfg, a.dry)
     sync_console(run, cfg)
     print("run %s  workdir %s" % (run.s["run_id"], run.s["workdir"]))
     halt = loop(run, cfg, a.dry, a.max_turns)

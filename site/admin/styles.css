@@ -60,7 +60,8 @@ main { max-width: 1520px; margin: 0 auto; padding: 44px 28px 100px; }
 .magic-link-status { min-height: 18px; margin: 8px 0 0; color: var(--quiet); font-size: .68rem; line-height: 1.4; }
 .magic-link-status[data-tone="success"] { color: var(--green); }
 .magic-link-status[data-tone="error"] { color: #a33b30; }
-.configuration-note { margin: 12px 0 0; color: var(--quiet); font-size: .75rem; }
+.signin-copy > .eyebrow { color: #174ea6; }
+.configuration-note { margin: 12px 0 0; color: #52647b; font-size: .75rem; }
 .signin-fallback { display: inline-flex; align-items: center; gap: 7px; margin-top: 12px; color: #315b91; text-decoration: none; font-size: .76rem; font-weight: 650; }
 .signin-fallback span { transition: transform .18s ease; }
 .signin-fallback:hover { color: var(--blue); }

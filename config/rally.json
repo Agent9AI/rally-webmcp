@@ -51,6 +51,24 @@
     "enabled": [],
     "overrides": {}
   },
+  "research": {
+    "enabled": true,
+    "executable": "/Users/terry/.npm-global/lib/node_modules/ruflo/bin/ruflo.js",
+    "version": "3.38.20",
+    "allowed_tools": [
+      "guidance_recommend",
+      "guidance_workflow",
+      "guidance_quickref",
+      "hooks_route",
+      "memory_store",
+      "memory_retrieve",
+      "memory_search"
+    ],
+    "disabled_global_server_names": [
+      "figma",
+      "cmc-skill-hub"
+    ]
+  },
   "mail": {
     "enabled": true,
     "cc_human": "terry@agent9.dev",

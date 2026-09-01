@@ -86,7 +86,13 @@
   const composerPersona = document.querySelector("[data-composer-persona]");
   const composerExpertise = document.querySelector("[data-composer-expertise]");
   const composerAutonomy = document.querySelector("[data-composer-autonomy]");
+  const composerResearch = document.querySelector("[data-composer-research]");
   const postureNote = document.querySelector("[data-posture-note]");
+  const researchReserve = document.querySelector("[data-research-reserve]");
+  const researchCover = document.querySelector("[data-research-cover]");
+  const researchPanel = document.querySelector("[data-research-panel]");
+  const researchArm = document.querySelector("[data-research-arm]");
+  const researchState = document.querySelector("[data-research-state]");
   const teammateList = document.querySelector("[data-teammate-list]");
   const teammateForm = document.querySelector("[data-teammate-form]");
   const teammateFormTitle = document.querySelector("#teammate-form-title");
@@ -126,6 +132,8 @@
   let selectedAssistant = "strategist";
   let selectedExpertise = "balanced";
   let selectedAutonomy = "resilient";
+  let selectedResearchMode = "standard";
+  let researchCapability = null;
   let lastSuggestedDraft = { title: "", goal: "" };
   let assistantSetupManuallyToggled = false;
   const WORKSPACE_REFRESH_INTERVAL_MS = 13000;
@@ -377,7 +385,10 @@
     selectedAssistant = "strategist";
     selectedExpertise = "balanced";
     selectedAutonomy = "resilient";
+    selectedResearchMode = "standard";
+    researchCapability = null;
     lastSuggestedDraft = { title: "", goal: "" };
+    setResearchPanel(false);
     syncAssistantSetup();
     commissionHub.classList.remove("is-composing");
     openJobComposerButtons.forEach((button) => button.setAttribute("aria-expanded", "false"));
@@ -628,6 +639,70 @@
     return { title: profile.title, goal: `${profile.goal}\n\n${depth}` };
   }
 
+  function setResearchPanel(open, { focus = false } = {}) {
+    researchPanel.hidden = !open;
+    researchCover.setAttribute("aria-expanded", String(open));
+    if (focus) focusSoon(open ? researchArm : researchCover);
+  }
+
+  function syncResearchReserve(message = "") {
+    const armed = selectedResearchMode === "ruflo";
+    researchReserve.dataset.state = armed ? "armed" : "sealed";
+    researchArm.setAttribute("aria-pressed", String(armed));
+    researchArm.textContent = armed
+      ? "Disarm Ruflo and use Standard"
+      : "Arm Ruflo for this job";
+    researchState.textContent = message || (armed
+      ? "Ruflo armed · this run only"
+      : "Standard · Ruflo off");
+    composerResearch.textContent = armed
+      ? "Ruflo research · this run only"
+      : "Standard research";
+  }
+
+  function resetResearchReserve() {
+    selectedResearchMode = "standard";
+    pendingJobIdempotencyKey = "";
+    setResearchPanel(false);
+    syncResearchReserve();
+  }
+
+  async function requireRufloCapability({ signal = null } = {}) {
+    if (researchCapability?.available === true) return researchCapability;
+    const receipt = await workspaceApi("/v1/workspace/capabilities", {
+      ...(signal ? { signal } : {}),
+    });
+    const valid = receipt?.schema_version === 1 &&
+      Array.isArray(receipt.research_profiles) &&
+      receipt.research_profiles.includes("ruflo") &&
+      receipt.ruflo?.available === true &&
+      receipt.ruflo?.version === "3.38.20" &&
+      receipt.ruflo?.scope === "run_only";
+    if (!valid) throw new Error("Ruflo reserve is unavailable. Use Standard or try again after Rally is updated.");
+    researchCapability = Object.freeze({ available: true, version: "3.38.20" });
+    return researchCapability;
+  }
+
+  async function armRuflo({ signal = null } = {}) {
+    researchArm.disabled = true;
+    researchArm.setAttribute("aria-busy", "true");
+    researchState.textContent = "Checking the run-only Ruflo reserve…";
+    try {
+      await requireRufloCapability({ signal });
+      selectedResearchMode = "ruflo";
+      pendingJobIdempotencyKey = "";
+      syncResearchReserve();
+    } catch (error) {
+      selectedResearchMode = "standard";
+      syncResearchReserve("Standard · Ruflo unavailable — use Standard or retry");
+      throw error;
+    } finally {
+      researchArm.disabled = false;
+      researchArm.removeAttribute("aria-busy");
+      focusSoon(researchArm);
+    }
+  }
+
   function syncAssistantSetup({ prefill = false } = {}) {
     const previousDraft = lastSuggestedDraft;
     const draft = assistantDraft();
@@ -660,6 +735,7 @@
     postureNote.textContent = selectedAutonomy === "resilient"
       ? "If one agent gets stuck, another may try once. A different agent still checks the finished work."
       : "The job stops at the first blocker it cannot solve. A different agent still checks completed work.";
+    syncResearchReserve();
     if (prefill) {
       if (!jobTitle.value || jobTitle.value === previousDraft.title) jobTitle.value = draft.title;
       if (!jobGoal.value || jobGoal.value === previousDraft.goal) jobGoal.value = draft.goal;
@@ -756,13 +832,14 @@
     return `job:${[...entropy].map((value) => value.toString(16).padStart(8, "0")).join("")}`;
   }
 
-  function showJobAcceptance({ runId, title, status, acceptedAt, secondWind }) {
+  function showJobAcceptance({ runId, title, status, acceptedAt, secondWind, researchMode }) {
     acceptedRunId = runId;
     jobReceiptTitle.textContent = title;
     jobReceiptId.textContent = runId;
     const acceptedTime = shortTime(acceptedAt);
     const queueState = status === "running" ? "Started" : "Queued";
     jobReceiptDetail.textContent = `${queueState}${acceptedTime ? ` ${acceptedTime}` : ""} · ` +
+      `${researchMode === "ruflo" ? "Ruflo armed for this run" : "Standard research"} · ` +
       `${secondWind ? "one recovery try available" : "stop on first blocker"} · a different agent checks finished work.`;
     setComposerExpanded(false);
     jobReceipt.hidden = false;
@@ -821,7 +898,7 @@
 
   async function webMcpPrepareWorkspaceJob(input = {}, options = {}) {
     input = closedWorkspaceToolInput(input, [
-      "title", "goal", "source_run_id", "second_wind",
+      "title", "goal", "source_run_id", "second_wind", "research_mode",
     ]);
     requireWorkspaceToolSession(options.signal);
     const title = workspaceToolText(input.title, "title", 160, { required: true });
@@ -829,7 +906,17 @@
     const sourceRunId = workspaceToolRunId(input.source_run_id, { required: false });
     const secondWind = input.second_wind === undefined ? true : input.second_wind;
     if (typeof secondWind !== "boolean") throw new TypeError("second_wind must be true or false");
+    const researchMode = input.research_mode === undefined ? "standard" : input.research_mode;
+    if (researchMode !== "standard" && researchMode !== "ruflo") {
+      throw new TypeError("research_mode must be standard or ruflo");
+    }
     selectedAutonomy = secondWind ? "resilient" : "guarded";
+    if (researchMode === "ruflo") {
+      setResearchPanel(true);
+      await armRuflo({ signal: options.signal });
+    } else {
+      resetResearchReserve();
+    }
     syncAssistantSetup();
     showWorkspaceView("work", { focusHeading: false });
     openJobComposer();
@@ -846,6 +933,7 @@
       title,
       source_run_id: sourceRunId || null,
       second_wind: secondWind,
+      research_mode: selectedResearchMode,
       message: "The real Rally job form is open. Nothing has started yet.",
     };
   }
@@ -866,6 +954,7 @@
       title: receipt.title,
       accepted_at: receipt.acceptedAt,
       second_wind: receipt.secondWind,
+      research_mode: receipt.researchMode,
       message: "Rally accepted the job. Its agents will appear in the open run as work begins.",
     };
   }
@@ -983,6 +1072,7 @@
               goal: { type: "string", minLength: 20, maxLength: 6000, description: "The finished result Rally's agents should deliver and how it will be checked." },
               source_run_id: { type: "string", pattern: "^r-[0-9a-z-]{3,77}$", maxLength: 80, description: "Optional earlier run to reference in a new follow-up job; this does not resume that run." },
               second_wind: { type: "boolean", default: true, description: "Let another Rally agent take over once if the first worker gets stuck." },
+              research_mode: { type: "string", enum: ["standard", "ruflo"], default: "standard", description: "Use Ruflo only for a visibly armed, run-scoped heavy-research job." },
             },
           },
           annotations: { readOnlyHint: false, untrustedContentHint: true },
@@ -1483,6 +1573,12 @@
       element("h2", "", record.title || record.run_id),
       element("p", "", `${record.run_id} · updated ${shortTime(record.updated_at)}`),
     );
+    if (record.policy?.research?.mode === "ruflo") {
+      const researchStatus = record.policy.research.status === "active"
+        ? "Ruflo research · run only"
+        : "Ruflo requested · safety check did not pass";
+      copy.append(element("span", "run-research-mode", researchStatus));
+    }
     const total = Math.max(0, Number(record.progress?.total) || 0);
     const done = Math.min(total, Math.max(0, Number(record.progress?.done) || 0));
     const score = element("div", "run-score");
@@ -2309,6 +2405,23 @@
     selectedAutonomy = jobSecondWind.checked ? "resilient" : "guarded";
     syncAssistantSetup();
   });
+  researchCover.addEventListener("click", () => {
+    const open = researchCover.getAttribute("aria-expanded") !== "true";
+    setResearchPanel(open, { focus: true });
+  });
+  researchArm.addEventListener("click", async () => {
+    if (selectedResearchMode === "ruflo") {
+      resetResearchReserve();
+      setResearchPanel(true);
+      focusSoon(researchArm);
+      return;
+    }
+    try {
+      await armRuflo();
+    } catch (error) {
+      showToast(error.message || "Ruflo reserve is unavailable. Standard remains selected.", "warning");
+    }
+  });
 
   openJobComposerButtons.forEach((button) => {
     button.addEventListener("click", () => openJobComposer(button));
@@ -2341,6 +2454,7 @@
     const goal = jobGoal.value.trim();
     const sourceRunId = jobSourceRun.value.trim();
     const secondWind = jobSecondWind.checked;
+    const researchMode = selectedResearchMode;
     if (!title || !goal) {
       jobFormStatus.textContent = "Add a title and a clear definition of done.";
       focusSoon(!title ? jobTitle : jobGoal);
@@ -2348,6 +2462,7 @@
     }
     const payload = { title, goal, second_wind: secondWind };
     if (sourceRunId) payload.source_run_id = sourceRunId;
+    if (researchMode === "ruflo") payload.research_mode = "ruflo";
     if (!pendingJobIdempotencyKey) pendingJobIdempotencyKey = newJobIdempotencyKey();
 
     jobSubmit.disabled = true;
@@ -2380,10 +2495,11 @@
       jobSecondWind.checked = selectedAutonomy === "resilient";
       jobForm.querySelector(".job-continuity").open = false;
       jobFormStatus.textContent = "";
-      showJobAcceptance({ runId, title, status, acceptedAt, secondWind });
+      showJobAcceptance({ runId, title, status, acceptedAt, secondWind, researchMode });
+      resetResearchReserve();
       showToast(`Rally started ${title}. The job is open below.`);
       await loadWorkspaceRuns({ openRunId: runId, provisional });
-      return { runId, title, status, acceptedAt, secondWind };
+      return { runId, title, status, acceptedAt, secondWind, researchMode };
     } catch (error) {
       jobFormStatus.textContent = error.message || "Rally could not accept this job. Nothing was queued.";
       throw error;

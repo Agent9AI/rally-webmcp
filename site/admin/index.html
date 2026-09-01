@@ -143,6 +143,25 @@
                   </div>
                 </div>
                 <p class="posture-note" data-posture-note>If one agent gets stuck, another may try once. A different agent still checks the finished work.</p>
+                <div class="research-reserve" data-research-reserve data-state="sealed">
+                  <div class="research-reserve-status">
+                    <span>Research reserve</span>
+                    <b data-research-state role="status" aria-live="polite" aria-atomic="true">Standard · Ruflo off</b>
+                  </div>
+                  <button class="research-cover" id="research-reserve-cover" type="button" data-research-cover aria-expanded="false" aria-controls="research-reserve-panel">
+                    <span><b>Review Ruflo reserve</b><small>Optional, run-only research coordination</small></span>
+                    <span class="research-cover-icon" aria-hidden="true">+</span>
+                  </button>
+                  <div class="research-reserve-panel" id="research-reserve-panel" role="group" data-research-panel aria-labelledby="research-reserve-cover" hidden>
+                    <p>Ruflo can share research routing and run-only memory across Claude, Gemini, and Codex for this job.</p>
+                    <ul id="research-reserve-safety">
+                      <li>No daemon or background workers</li>
+                      <li>No shell, browser, or GitHub access</li>
+                      <li>No cross-run memory</li>
+                    </ul>
+                    <button class="research-arm" type="button" data-research-arm aria-pressed="false" aria-describedby="research-reserve-safety">Arm Ruflo for this job</button>
+                  </div>
+                </div>
               </section>
 
               <section class="setup-step setup-assets" aria-labelledby="setup-assets-title">
@@ -172,7 +191,7 @@
 
             <form class="job-composer" id="manual-job-composer" data-job-form aria-labelledby="job-composer-title" aria-busy="false" hidden>
               <div class="job-composer-heading">
-                <div><p class="eyebrow">New dashboard job</p><h3 id="job-composer-title" tabindex="-1">Describe the outcome—not the busywork.</h3><p class="composer-brief"><span data-composer-persona>Executive strategist</span><span data-composer-expertise>Focused expertise</span><span data-composer-autonomy>Retry once if blocked</span></p></div>
+                <div><p class="eyebrow">New dashboard job</p><h3 id="job-composer-title" tabindex="-1">Describe the outcome—not the busywork.</h3><p class="composer-brief"><span data-composer-persona>Executive strategist</span><span data-composer-expertise>Focused expertise</span><span data-composer-autonomy>Retry once if blocked</span><span data-composer-research>Standard research</span></p></div>
                 <button type="button" aria-label="Close new job form" data-close-job-composer>&times;</button>
               </div>
               <div class="job-fields">

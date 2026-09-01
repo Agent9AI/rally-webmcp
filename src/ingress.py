@@ -27,7 +27,10 @@ RESEND_INBOUND = "https://api.resend.com/emails/inbound/%s"
 # makes therefore identifies itself. Found the hard way: curl worked, the poller
 # did not, and the failure looked like a credential problem.
 USER_AGENT = "rally/1.0 (+https://github.com/Agent9AI/rally)"
-RUN_TAG = re.compile(r"\[rally\s+#(r-[0-9a-z-]+)", re.IGNORECASE)
+RUN_TAG = re.compile(
+    r"\[rally\s+#(r-[0-9a-z-]+|[0-9]{6}-[a-z0-9]{1,64})(?=\]|\s)",
+    re.IGNORECASE,
+)
 RUN_ID = re.compile(r"^r-[0-9a-z-]{3,77}$")
 WORKSPACE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$")
 USER_ID = re.compile(r"^[A-Za-z0-9._:-]{1,255}$")
@@ -721,9 +724,11 @@ def classify_dashboard(payload: Dict) -> Tuple[str, Dict]:
 
     job = payload.get("job")
     authority = payload.get("authority")
-    if not isinstance(job, dict) or set(job) != {
-        "title", "goal", "source_run_id", "second_wind",
-    }:
+    legacy_job_keys = {"title", "goal", "source_run_id", "second_wind"}
+    if (
+        not isinstance(job, dict)
+        or set(job) not in (legacy_job_keys, legacy_job_keys | {"research_mode"})
+    ):
         return invalid
     if not isinstance(authority, dict) or set(authority) != {
         "user_id", "email", "workspace_id",
@@ -733,6 +738,7 @@ def classify_dashboard(payload: Dict) -> Tuple[str, Dict]:
     goal = job.get("goal")
     source_run_id = job.get("source_run_id")
     second_wind = job.get("second_wind")
+    research_mode = job.get("research_mode", "standard")
     if (not isinstance(title, str) or not title or title != title.strip()
             or len(title) > 160
             or "\n" in title or "\r" in title
@@ -746,7 +752,9 @@ def classify_dashboard(payload: Dict) -> Tuple[str, Dict]:
             or (source_run_id is not None and (
                 not isinstance(source_run_id, str) or not RUN_ID.fullmatch(source_run_id)
             ))
-            or (second_wind is not None and not isinstance(second_wind, bool))):
+            or (second_wind is not None and not isinstance(second_wind, bool))
+            or not isinstance(research_mode, str)
+            or research_mode not in {"standard", "ruflo"}):
         return invalid
     user_id = authority.get("user_id")
     workspace_id = authority.get("workspace_id")
@@ -768,6 +776,7 @@ def classify_dashboard(payload: Dict) -> Tuple[str, Dict]:
         "request_key": run_id,
         "source_run_id": source_run_id,
         "second_wind": second_wind,
+        "research_mode": research_mode,
         "workspace_id": workspace_id,
     }
 

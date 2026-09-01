@@ -272,6 +272,7 @@ const env = {
   ARTIFACTS: new MemoryR2(),
   POLL_TOKEN: "workspace-test-secret",
   WORKSPACE_KEY_SECRET: "workspace-test-secret",
+  RUFLO_RESEARCH_ENABLED: "1",
   INGEST_TOKEN: "workspace-ingest-token",
   RESEND_WEBHOOK_SECRET: `whsec_${resendSigningKey.toString("base64")}`,
 };
@@ -291,7 +292,7 @@ const artifactReceipt = {
 const stagedArtifactReceipt = { ...artifactReceipt, status: "staged" };
 const readyArtifactReceipt = { ...artifactReceipt, status: "ready" };
 
-function projection(runId, workspaceId, visibility = "private", artifacts = []) {
+function projection(runId, workspaceId, visibility = "private", artifacts = [], research = null) {
   return {
     schema_version: 1,
     workspace_id: workspaceId,
@@ -315,13 +316,16 @@ function projection(runId, workspaceId, visibility = "private", artifacts = []) 
     ],
     artifacts,
     timeline: [],
-    policy: { continuity: { mode: "halt", recoveries_used: 0, max_recoveries_per_run: 0 } },
+    policy: {
+      continuity: { mode: "halt", recoveries_used: 0, max_recoveries_per_run: 0 },
+      ...(research ? { research } : {}),
+    },
     coordination: { status: "ready_for_rally", framework: "Google ADK", services: ["Cloud Run"] },
     provenance: { published_at: now },
   };
 }
 
-async function publishResponse(runId, workspaceId, visibility = "private", artifacts = []) {
+async function publishResponse(runId, workspaceId, visibility = "private", artifacts = [], research = null) {
   return worker.fetch(new Request(
     `https://rally.agent9.dev/v1/console/runs/${runId}`,
     {
@@ -330,17 +334,23 @@ async function publishResponse(runId, workspaceId, visibility = "private", artif
         authorization: `Bearer ${env.POLL_TOKEN}`,
         "content-type": "application/json",
       },
-      body: JSON.stringify(projection(runId, workspaceId, visibility, artifacts)),
+      body: JSON.stringify(projection(runId, workspaceId, visibility, artifacts, research)),
     },
   ), env, {});
 }
 
-async function publish(runId, workspaceId, visibility = "private", artifacts = []) {
-  const response = await publishResponse(runId, workspaceId, visibility, artifacts);
+async function publish(runId, workspaceId, visibility = "private", artifacts = [], research = null) {
+  const response = await publishResponse(runId, workspaceId, visibility, artifacts, research);
   assert.equal(response.status, 200);
 }
 
-await publish("r-20260831-agent9", "agent9-rally", "public", [stagedArtifactReceipt]);
+await publish(
+  "r-20260831-agent9",
+  "agent9-rally",
+  "public",
+  [stagedArtifactReceipt],
+  { mode: "ruflo", status: "active", scope: "run_only" },
+);
 await publish("r-20260831-other", "another-company");
 
 globalThis.fetch = async (input, init = {}) => {
@@ -356,6 +366,17 @@ globalThis.fetch = async (input, init = {}) => {
 };
 
 const agent9Headers = { "x-rally-session": "a".repeat(43) };
+const capabilities = await worker.fetch(new Request(
+  "https://rally.agent9.dev/v1/workspace/capabilities",
+  { headers: agent9Headers },
+), env, {});
+assert.equal(capabilities.status, 200);
+assert.deepEqual(await capabilities.json(), {
+  schema_version: 1,
+  research_profiles: ["standard", "ruflo"],
+  ruflo: { available: true, version: "3.38.20", scope: "run_only" },
+});
+
 const list = await worker.fetch(new Request(
   "https://rally.agent9.dev/v1/workspace/runs",
   { headers: agent9Headers },
@@ -374,6 +395,9 @@ const detailBody = await detail.json();
 assert.equal(detailBody.run_id, "r-20260831-agent9");
 assert.equal(detailBody.workspace_id, undefined);
 assert.deepEqual(detailBody.artifacts, []);
+assert.deepEqual(detailBody.policy.research, {
+  mode: "ruflo", status: "active", scope: "run_only",
+});
 
 const prematureReady = await publishResponse(
   "r-20260831-agent9",
@@ -631,6 +655,64 @@ const invalidJob = await worker.fetch(jobRequest({
 }), env, {});
 assert.equal(invalidJob.status, 400);
 assert.equal(env.INBOX.messages.size, 0);
+
+const invalidResearchMode = await worker.fetch(jobRequest({
+  title: "Reject an unknown research profile",
+  goal: "Only Rally's closed standard and Ruflo profiles are accepted.",
+  research_mode: "all",
+}), env, {});
+assert.equal(invalidResearchMode.status, 400);
+assert.equal(env.INBOX.messages.size, 0);
+
+const standardEnv = { ...env, INBOX: new MemoryD1(), ARTIFACTS: new MemoryR2() };
+const standardJob = {
+  title: "Keep the standard fingerprint stable",
+  goal: "An explicit standard profile must replay the legacy job bytes.",
+};
+const standardAccepted = await worker.fetch(jobRequest(
+  standardJob,
+  "manual-job-standard-profile-0001",
+), standardEnv, {});
+assert.equal(standardAccepted.status, 202);
+const standardReplay = await worker.fetch(jobRequest(
+  { ...standardJob, research_mode: "standard" },
+  "manual-job-standard-profile-0001",
+), standardEnv, {});
+assert.deepEqual(await standardReplay.json(), await standardAccepted.json());
+const standardEnvelope = JSON.parse([...standardEnv.INBOX.messages.values()][0].payload);
+assert.equal(Object.hasOwn(standardEnvelope.job, "research_mode"), false);
+
+const researchEnv = { ...env, INBOX: new MemoryD1(), ARTIFACTS: new MemoryR2() };
+const researchJob = {
+  title: "Arm Ruflo for deep research",
+  goal: "Use the bounded run-scoped research profile and preserve Rally policy.",
+  research_mode: "ruflo",
+};
+const unavailableResearchEnv = {
+  ...env,
+  RUFLO_RESEARCH_ENABLED: "0",
+  INBOX: new MemoryD1(),
+  ARTIFACTS: new MemoryR2(),
+};
+const unavailableResearch = await worker.fetch(jobRequest(
+  researchJob,
+  "manual-job-ruflo-unavailable-0001",
+), unavailableResearchEnv, {});
+assert.equal(unavailableResearch.status, 409);
+assert.equal(unavailableResearchEnv.INBOX.messages.size, 0);
+
+const researchAccepted = await worker.fetch(jobRequest(
+  researchJob,
+  "manual-job-ruflo-profile-0001",
+), researchEnv, {});
+assert.equal(researchAccepted.status, 202);
+const researchEnvelope = JSON.parse([...researchEnv.INBOX.messages.values()][0].payload);
+assert.equal(researchEnvelope.job.research_mode, "ruflo");
+const researchDowngrade = await worker.fetch(jobRequest(
+  { title: researchJob.title, goal: researchJob.goal, research_mode: "standard" },
+  "manual-job-ruflo-profile-0001",
+), researchEnv, {});
+assert.equal(researchDowngrade.status, 409);
 
 env.INBOX.failNextWorkspaceJobInsert = true;
 const atomicFailure = await worker.fetch(jobRequest({

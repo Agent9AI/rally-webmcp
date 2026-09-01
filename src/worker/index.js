@@ -14,6 +14,7 @@
  *   GET  /v1/console/runs/:id Public, sanitized run detail.
  *   GET  /v1/workspace/runs    Authenticated, workspace-scoped work queue.
  *   GET  /v1/workspace/runs/:id Authenticated, workspace-scoped run detail.
+ *   GET  /v1/workspace/capabilities Authenticated producer capability receipt.
  *   GET  /v1/workspace/artifacts/:id/:name Authenticated run deliverable.
  *   POST /v1/workspace/jobs    Authenticated manual commission into the inbox.
  *   PUT  /v1/console/artifacts/:id/:name Runner publishes verified bytes.
@@ -40,6 +41,7 @@ const CONSOLE_ARTIFACT_ROOT = "/v1/console/artifacts";
 const WORKSPACE_ROOT = "/v1/workspace/runs";
 const WORKSPACE_ARTIFACT_ROOT = "/v1/workspace/artifacts";
 const WORKSPACE_JOBS_ROOT = "/v1/workspace/jobs";
+const WORKSPACE_CAPABILITIES_ROOT = "/v1/workspace/capabilities";
 const CONTROL_PLANE_PROXY_ROOT = "/api/control-plane";
 const SITE_ORIGIN = "https://agent9-rally.pages.dev";
 const WEBMCP_SITE_ORIGIN = "https://rally-webmcp.pages.dev";
@@ -61,6 +63,7 @@ const DOMAIN_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{15,127}$/;
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 const RUN_STATUSES = new Set(["running", "complete", "blocked", "halted"]);
+const RESEARCH_STATUSES = new Set(["active", "pending", "rejected"]);
 const TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
 const ARTIFACT_MIME_TYPES = new Set([
   "application/pdf",
@@ -809,7 +812,9 @@ function normalizeManualJob(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("body must be an object");
   }
-  const allowed = new Set(["title", "goal", "source_run_id", "second_wind"]);
+  const allowed = new Set([
+    "title", "goal", "source_run_id", "second_wind", "research_mode",
+  ]);
   const keys = Object.keys(value);
   if (
     !Object.hasOwn(value, "title") ||
@@ -837,12 +842,21 @@ function normalizeManualJob(value) {
   if (Object.hasOwn(value, "second_wind") && typeof value.second_wind !== "boolean") {
     throw new Error("second_wind must be a boolean");
   }
-  return {
+  const researchMode = value.research_mode == null ? "standard" : value.research_mode;
+  if (researchMode !== "standard" && researchMode !== "ruflo") {
+    throw new Error("research_mode must be standard or ruflo");
+  }
+  const job = {
     title,
     goal,
     source_run_id: sourceRunId,
     second_wind: Object.hasOwn(value, "second_wind") ? value.second_wind : null,
   };
+  // Preserve the exact legacy fingerprint for omitted or explicit standard.
+  // Old accepted idempotency keys must replay rather than conflict after this
+  // optional profile ships.
+  if (researchMode === "ruflo") job.research_mode = "ruflo";
+  return job;
 }
 
 function acceptedManualJob(envelope, fingerprint, workspaceId) {
@@ -928,6 +942,9 @@ async function createManualJob(request, env, workspace) {
     job = normalizeManualJob(JSON.parse(raw));
   } catch (error) {
     return json({ detail: error instanceof Error ? error.message : "invalid job request" }, 400);
+  }
+  if (job.research_mode === "ruflo" && env.RUFLO_RESEARCH_ENABLED !== "1") {
+    return json({ detail: "Ruflo research is not available for new jobs" }, 409);
   }
 
   const fingerprint = await sha256Hex(JSON.stringify(job));
@@ -1207,6 +1224,12 @@ function normalizeConsoleRun(value, expectedRunId) {
     agents.filter((agent) => agent.participated).map((agent) => agent.family).filter(Boolean)
   ).size;
   const artifacts = normalizeArtifacts(value.artifacts);
+  const researchMode = value.policy?.research?.mode === "ruflo" ? "ruflo" : "standard";
+  const requestedResearchStatus = text(value.policy?.research?.status, 20);
+  const researchStatus = researchMode === "ruflo" &&
+    RESEARCH_STATUSES.has(requestedResearchStatus)
+    ? requestedResearchStatus
+    : "off";
   return {
     schema_version: 1,
     workspace_id: workspaceId,
@@ -1233,6 +1256,11 @@ function normalizeConsoleRun(value, expectedRunId) {
         mode: text(value.policy?.continuity?.mode, 40) || "halt",
         recoveries_used: integer(value.policy?.continuity?.recoveries_used, 8),
         max_recoveries_per_run: integer(value.policy?.continuity?.max_recoveries_per_run, 8),
+      },
+      research: {
+        mode: researchMode,
+        status: researchStatus,
+        scope: researchMode === "ruflo" ? "run_only" : null,
       },
     },
     coordination: {
@@ -1556,6 +1584,24 @@ export default {
     }
 
     // --- authenticated workspace ---------------------------------------
+    if (path === WORKSPACE_CAPABILITIES_ROOT) {
+      if (request.method !== "GET") {
+        return json({ detail: "method not allowed" }, 405, { allow: "GET" });
+      }
+      const workspace = await authenticatedWorkspace(request, env);
+      if (workspace.response) return workspace.response;
+      const ruflo = env.RUFLO_RESEARCH_ENABLED === "1";
+      return json({
+        schema_version: 1,
+        research_profiles: ruflo ? ["standard", "ruflo"] : ["standard"],
+        ruflo: {
+          available: ruflo,
+          version: ruflo ? "3.38.20" : null,
+          scope: ruflo ? "run_only" : null,
+        },
+      });
+    }
+
     const workspaceArtifact = artifactRoute(path, WORKSPACE_ARTIFACT_ROOT);
     if (
       workspaceArtifact ||

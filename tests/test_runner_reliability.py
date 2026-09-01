@@ -213,6 +213,79 @@ class DurableIngressTests(unittest.TestCase):
         self.assertTrue(saved["continuity"]["second_wind"])
         self.assertEqual(saved["continuity"]["mode"], "second_wind")
 
+    def test_ruflo_commission_snapshots_a_separate_run_authority(self):
+        cfg = runtime_config()
+        cfg["research"] = {
+            "enabled": True,
+            "disabled_global_server_names": ["figma"],
+        }
+        run_id = "r-20260831-123e4567-e89b-42d3-a456-426614174001"
+        authority = {
+            "mode": "ruflo",
+            "mcp_config_path": "/private/run/research/mcp-config.json",
+            "allowed_tools": list(runner.research.REVIEWED_ALLOWED_TOOLS),
+        }
+        workspace = os.path.join(self.runs, run_id, "workspace")
+        with mock.patch.object(runner, "new_workspace", return_value=workspace), \
+                mock.patch.object(
+                    runner.research, "prepare_run", return_value=authority
+                ) as prepare, \
+                mock.patch.object(runner, "attach_cloud_coordination", return_value=True), \
+                mock.patch.object(runner, "sync_console", return_value=True), \
+                mock.patch.object(runner, "loop", return_value="complete"), \
+                mock.patch.object(runner, "write_report", return_value="verified"), \
+                mock.patch.object(runner, "mail_report"):
+            accepted = runner.handle_commission(
+                cfg, "Deeply investigate it", "owner@example.com",
+                request_key=run_id, run_id=run_id, research_mode="ruflo",
+            )
+        self.assertEqual(accepted, run_id)
+        saved = runner.Run.load(run_id).s
+        self.assertEqual(saved["research_mode"], "ruflo")
+        self.assertEqual(saved["research_authority"], authority)
+        prepare.assert_called_once()
+        self.assertEqual(prepare.call_args.kwargs["mode"], "ruflo")
+
+    def test_ruflo_safety_failure_is_terminal_and_never_downgrades(self):
+        cfg = runtime_config()
+        cfg["research"] = {"enabled": True}
+        run_id = "r-20260831-123e4567-e89b-42d3-a456-426614174002"
+        workspace = os.path.join(self.runs, run_id, "workspace")
+        with mock.patch.object(runner, "new_workspace", return_value=workspace), \
+                mock.patch.object(
+                    runner.research,
+                    "prepare_run",
+                    side_effect=runner.research.ResearchConfigError("version mismatch"),
+                ), \
+                mock.patch.object(runner, "attach_cloud_coordination") as cloud, \
+                mock.patch.object(runner, "loop") as loop, \
+                mock.patch.object(runner, "sync_console", return_value=True), \
+                mock.patch.object(runner, "mail_report"):
+            accepted = runner.handle_commission(
+                cfg, "Deeply investigate it", "owner@example.com",
+                request_key=run_id, run_id=run_id, research_mode="ruflo",
+            )
+        self.assertEqual(accepted, run_id)
+        cloud.assert_not_called()
+        loop.assert_not_called()
+        saved = runner.Run.load(run_id).s
+        self.assertEqual(saved["research_mode"], "ruflo")
+        self.assertNotIn("research_authority", saved)
+        self.assertEqual(saved["halt"]["reason"], "research_unavailable")
+        self.assertEqual(saved["report_halt"], "research_unavailable")
+
+    def test_durable_replay_cannot_change_research_profile(self):
+        run = runner.Run.create(
+            "Deeply investigate it", ".", runtime_config(),
+            commissioned_by="owner@example.com", commission_request_key="queue-ruflo",
+            research_mode="ruflo",
+        )
+        with self.assertRaisesRegex(RuntimeError, "research profile"):
+            runner.handle_commission(
+                runtime_config(), "Deeply investigate it", "owner@example.com",
+                request_key="queue-ruflo", research_mode="standard",
+            )
+
     def test_serve_passes_dashboard_metadata_without_changing_queue_ack_id(self):
         cfg = {
             "ingress": {
@@ -251,6 +324,7 @@ class DurableIngressTests(unittest.TestCase):
             source_run_id="r-20260830-source",
             second_wind=False,
             workspace_id="workspace-one",
+            research_mode="standard",
         )
         ack.assert_called_once_with(cfg, [queue_id])
 
@@ -446,6 +520,36 @@ class DurableIngressTests(unittest.TestCase):
         )
         self.assertNotIn("c@example.com", message["text"])
         self.assertNotIn("g@example.com", message["text"])
+
+    def test_compact_email_reference_resolves_to_the_exact_run(self):
+        cfg = runtime_config()
+        run_id = "r-20260901-d3042d73-9378-4516-8e63-5960d47db896"
+        runner.Run.create(
+            "Create the challenge song", ".", cfg, run_id=run_id,
+            commissioned_by="owner@example.com",
+        )
+        with mock.patch.object(runner, "sync_console", return_value=True):
+            runner.handle_note(
+                cfg, "260901-D3042D73", "STOP", sender="owner@example.com"
+            )
+        self.assertEqual(
+            runner.Run.load(run_id).s["halt"]["reason"], "stopped_by_human"
+        )
+
+    def test_ambiguous_compact_email_reference_fails_closed(self):
+        cfg = runtime_config()
+        for run_id in (
+            "r-20260901-deadbeef-1111-2222",
+            "r-20260901-deadbeef-aaaa-bbbb",
+        ):
+            runner.Run.create(
+                "Collision fixture", ".", cfg, run_id=run_id,
+                commissioned_by="owner@example.com",
+            )
+        with self.assertRaisesRegex(runner.NoteRejected, "ambiguous"):
+            runner.handle_note(
+                cfg, "260901-DEADBEEF", "STOP", sender="owner@example.com"
+            )
 
     def test_note_sender_must_match_the_original_commissioner(self):
         cfg = runtime_config()

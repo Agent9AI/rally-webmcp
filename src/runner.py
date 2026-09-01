@@ -29,7 +29,9 @@ import connectors  # noqa: E402
 import console as rally_console  # noqa: E402
 import envelope as E  # noqa: E402
 import media  # noqa: E402
+import research  # noqa: E402
 import report  # noqa: E402
+import run_refs  # noqa: E402
 import transport  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -221,13 +223,15 @@ class Run:
                commission_request_key: Optional[str] = None,
                workspace_id: Optional[str] = None,
                source_run_id: Optional[str] = None,
-               second_wind: Optional[bool] = None) -> "Run":
+               second_wind: Optional[bool] = None,
+               research_mode: str = "standard") -> "Run":
         rid = run_id or "r-%s-%s" % (
             dt.datetime.utcnow().strftime("%Y%m%d"), uuid.uuid4().hex[:6])
         if not isinstance(rid, str) or not RUN_ID_RE.fullmatch(rid):
             raise ValueError("invalid run_id")
         if workspace_id is not None:
             workspace_id = rally_console.validate_workspace_id(workspace_id)
+        research_mode = research.normalize_mode(research_mode)
         connectors.assert_worker_isolation(cfg, connector_subject)
         os.makedirs(RUNS, exist_ok=True)
         d = os.path.join(RUNS, rid)
@@ -251,6 +255,7 @@ class Run:
                 or (rid if commissioned_by is not None else None)
             ),
             "continuity": continuity,
+            "research_mode": research_mode,
             "report_generation": 0, "report_delivery": None,
         }
         if commissioned_by is not None:
@@ -385,6 +390,10 @@ def build_prompt(run: Run, actor: str, cfg: Dict) -> str:
     connector_context = connectors.prompt_text(s.get("connector_authority") or {})
     if connector_context:
         parts.append("\n" + connector_context)
+
+    research_context = research.prompt_text(s.get("research_authority") or {})
+    if research_context:
+        parts.append("\n" + research_context)
 
     generations = s.get("media_generations") or []
     if generations:
@@ -777,12 +786,31 @@ def take_turn(run: Run, cfg: Dict, dry: bool = False) -> Optional[str]:
         schema = SCHEMA if cfg["agents"][actor].get("use_schema") else ""
         try:
             agent_cfg = dict(cfg["agents"][actor])
-            authority = s.get("connector_authority") or {}
-            agent_cfg["mcp_config_path"] = authority.get("mcp_config_path", "")
-            agent_cfg["connector_env"] = connectors.agent_environment(authority, actor)
+            connector_authority = s.get("connector_authority") or {}
+            research_authority = s.get("research_authority") or {}
+            if research_authority and (
+                    agent_cfg.get("adapter") or actor) == "agy":
+                # Antigravity reads workspace MCP configuration. Restore it from
+                # the immutable run snapshot immediately before launch so an
+                # earlier worker cannot widen a later Gemini turn.
+                research.materialize_agy_config(
+                    s["workdir"],
+                    research_authority["mcp_config_path"],
+                    (cfg.get("research") or {}).get(
+                        "disabled_global_server_names", []
+                    ),
+                )
+            agent_cfg["mcp_config_path"] = (
+                research_authority.get("mcp_config_path")
+                or connector_authority.get("mcp_config_path", "")
+            )
+            agent_cfg["research_mode"] = s.get("research_mode", "standard")
+            agent_cfg["connector_env"] = connectors.agent_environment(
+                connector_authority, actor
+            )
             raw = agents.run_agent(actor, prompt, s["workdir"], agent_cfg,
                                    limits["turn_timeout_sec"], schema)
-        except agents.AgentError as exc:
+        except (agents.AgentError, research.ResearchConfigError) as exc:
             detail = "%s turn failed: %s" % (actor, exc)
             recoverable = [
                 item["id"] for item in s.get("checklist") or []
@@ -991,8 +1019,47 @@ def initialize_commission_run(run: Run, cfg: Dict, connector_subject: str) -> No
             run.s["run_id"], os.path.dirname(run.path), cfg, connector_subject
         )
         changed = True
+    mode = research.normalize_mode(run.s.get("research_mode", "standard"))
+    if run.s.get("research_mode") != mode:
+        run.s["research_mode"] = mode
+        changed = True
+    if mode == "ruflo" and not run.s.get("research_authority"):
+        settings = cfg.get("research") or {}
+        run.s["research_authority"] = research.prepare_run(
+            run.s["run_id"],
+            os.path.dirname(run.path),
+            workdir,
+            cfg,
+            mode=mode,
+            connector_mcp_path=(
+                run.s.get("connector_authority") or {}
+            ).get("mcp_config_path", ""),
+            disabled_global_server_names=settings.get(
+                "disabled_global_server_names", []
+            ),
+        )
+        changed = True
     if changed:
         run.save()
+
+
+def reject_research_run(run: Run, cfg: Dict, mode: str,
+                        exc: Exception, request_key: Optional[str]) -> None:
+    """Publish a terminal, replayable failure instead of silently downgrading."""
+    detail = " ".join(str(exc).split())[:500]
+    run.s["research_failure"] = {
+        "mode": mode,
+        "status": "rejected",
+        "detail": detail,
+        "at": now(),
+    }
+    run.s["halt"] = {"reason": "research_unavailable", "detail": detail}
+    run.note("Ruflo research reserve rejected before model execution: %s" % detail)
+    run.save()
+    text = report.mechanical_summary(run.s, "research_unavailable")
+    record_report(run, text, "research_unavailable", request_key=request_key)
+    sync_console(run, cfg)
+    mail_report(run, cfg, text, "research_unavailable")
 
 
 def attach_cloud_coordination(run: Run, cfg: Dict, request_key: str) -> bool:
@@ -1083,7 +1150,9 @@ def handle_commission(cfg: Dict, task: str, sender: str,
                       run_id: Optional[str] = None,
                       source_run_id: Optional[str] = None,
                       second_wind: Optional[bool] = None,
-                      workspace_id: Optional[str] = None) -> str:
+                      workspace_id: Optional[str] = None,
+                      research_mode: str = "standard") -> str:
+    research_mode = research.normalize_mode(research_mode)
     if workspace_id is not None:
         workspace_id = rally_console.validate_workspace_id(workspace_id)
     durable_key = request_key or message_id or run_id
@@ -1092,6 +1161,8 @@ def handle_commission(cfg: Dict, task: str, sender: str,
         print("recovered commission %s from durable ingress replay" % run.s["run_id"])
         if workspace_id is not None and run.s.get("workspace_id") != workspace_id:
             raise RuntimeError("commission workspace does not match its durable run")
+        if research.normalize_mode(run.s.get("research_mode", "standard")) != research_mode:
+            raise RuntimeError("commission research profile does not match its durable run")
         if run.s.get("report"):
             delivery = run.s.get("report_delivery") or {}
             if delivery.get("status") in {"delivered", "not_required"}:
@@ -1120,10 +1191,15 @@ def handle_commission(cfg: Dict, task: str, sender: str,
             workspace_id=workspace_id,
             source_run_id=source_run_id,
             second_wind=second_wind,
+            research_mode=research_mode,
         )
         print("commissioned %s by %s" % (run.s["run_id"], sender))
-    initialize_commission_run(run, cfg, sender)
     request_key = run.s.get("commission_request_key") or message_id or run.s["run_id"]
+    try:
+        initialize_commission_run(run, cfg, sender)
+    except research.ResearchConfigError as exc:
+        reject_research_run(run, cfg, research_mode, exc, request_key)
+        return run.s["run_id"]
     if not attach_cloud_coordination(run, cfg, request_key):
         halt = "cloud_coordinator_error"
         text = report.mechanical_summary(run.s, halt)
@@ -1146,6 +1222,16 @@ def handle_note(cfg: Dict, run_id: str, text: str,
                 sender: Optional[str] = None,
                 request_key: Optional[str] = None) -> None:
     try:
+        run_id = run_refs.resolve(run_id, os.listdir(RUNS))
+    except run_refs.RunReferenceNotFoundError:
+        print("note for unknown run %s, dropped" % run_id)
+        return
+    except run_refs.AmbiguousRunReferenceError as exc:
+        raise NoteRejected("note run reference is ambiguous") from exc
+    except (OSError, TypeError, ValueError):
+        print("note for invalid run reference %s, dropped" % run_id)
+        return
+    try:
         run = Run.load(run_id)
     except IOError:
         print("note for unknown run %s, dropped" % run_id)
@@ -1165,6 +1251,17 @@ def handle_note(cfg: Dict, run_id: str, text: str,
                     or "complete")
             mail_report(run, cfg, run.s["report"], halt)
         return
+    if (run.s.get("research_mode") == "ruflo"
+            and not run.s.get("research_authority")):
+        try:
+            initialize_commission_run(run, cfg, authenticated_sender)
+        except research.ResearchConfigError as exc:
+            reject_research_run(run, cfg, "ruflo", exc, note_key)
+            return
+        run.s.pop("research_failure", None)
+        run.s["halt"] = None
+        run.note("Ruflo research reserve passed its safety check on retry")
+        run.save()
     apply_human_note(run, text)
     if message_id:
         prior = run.s.get("thread_message_id")
@@ -1289,6 +1386,7 @@ def serve(cfg: Dict, once: bool = False) -> int:
                             source_run_id=detail.get("source_run_id"),
                             second_wind=detail.get("second_wind"),
                             workspace_id=detail.get("workspace_id"),
+                            research_mode=detail.get("research_mode", "standard"),
                         )
                     elif kind == "note":
                         handle_note(
@@ -1439,6 +1537,17 @@ def cmd_check(cfg: Dict, smoke: bool = False) -> int:
         ))
     except connectors.ConnectorConfigError as exc:
         print("  connector gateway: FAIL %s" % exc)
+        ok = False
+    try:
+        reserve = research.preflight(cfg)
+        if reserve.get("enabled"):
+            live_reserve = research.smoke_facade(cfg)
+            print("  Ruflo reserve: pinned %s, %d live facade tools, run-only"
+                  % (live_reserve["version"], len(live_reserve["allowed_tools"])))
+        else:
+            print("  Ruflo reserve: disabled")
+    except research.ResearchConfigError as exc:
+        print("  Ruflo reserve: FAIL %s" % exc)
         ok = False
     for n, a in cfg["agents"].items():
         found = subprocess.run(["which", a.get("bin", n)], stdout=subprocess.PIPE)

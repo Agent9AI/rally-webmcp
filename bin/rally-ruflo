@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Rally-owned deny-by-default facade for the run-scoped Ruflo research server.
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+exec python3 "$ROOT/src/ruflo_proxy.py" "$@"

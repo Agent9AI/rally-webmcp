@@ -19,10 +19,15 @@ import urllib.error
 import urllib.request
 from typing import Dict, List, Optional
 
+import run_refs
+
 API = "https://api.resend.com/emails"
 USER_AGENT = "rally/1.0 (+https://github.com/Agent9AI/rally)"
 DEFAULT_REPLY_TO = "Rally <rally@updates.agent9.dev>"
-RALLY_SUBJECT = re.compile(r"^\[rally\s+#r-[0-9a-z-]+\]\s*(.*)$", re.IGNORECASE)
+RALLY_SUBJECT = re.compile(
+    r"^\[rally\s+#(?:r-[0-9a-z-]+|[0-9]{6}-[a-z0-9]+)\]\s*(.*)$",
+    re.IGNORECASE,
+)
 RUN_ID = re.compile(r"^r-[0-9a-z-]{3,77}$")
 RUNS_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "runs"))
 MAX_ATTACHMENT_FILE_BYTES = 6 * 1024 * 1024
@@ -376,7 +381,15 @@ def _rally_lifecycle_message(subject: str, text: str, headers: Dict[str, str],
                      "Start your reply with STOP to stop the run safely.")
         accent, badge_bg = "#0b57d0", "#e8f0fe"
 
-    polished_subject = "[rally #%s] %s — %s" % (run_id, subject_state, task)
+    try:
+        public_run_ref = run_refs.public_ref(run_id)
+    except (TypeError, ValueError):
+        # Old development fixtures and imported runs retain their full tag;
+        # production date-based IDs always take the compact branch.
+        public_run_ref = run_id
+    polished_subject = "[Rally #%s] %s — %s" % (
+        public_run_ref, subject_state, task
+    )
     phase = "Final report" if is_report else ("Turn %s" % (turn or "—"))
     audit_lines = [
         "Run: %s" % run_id,
@@ -571,9 +584,9 @@ def send(key: str, sender: str, to: str, subject: str, text: str,
          idempotency_key: Optional[str] = None) -> str:
     # Lifecycle mail is rendered here, at the last shared boundary, so every
     # acknowledgement, progress note and final report has the same executive
-    # voice. The run tag remains first in the subject and in X-Rally-Run,
-    # preserving reply routing and replay semantics without exposing checklist
-    # JSON or workstation paths to the human recipient.
+    # voice. A compact run reference remains first in the human subject while
+    # X-Rally-Run and the audit receipt retain the exact ID. Inbound resolution
+    # requires a unique prefix, so shorter subjects do not weaken reply routing.
     attachments = []
     attachment_note = ""
     if headers and str(headers.get("X-Rally-Report") or "").upper() == "COMPLETE":

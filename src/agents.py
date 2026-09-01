@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import tempfile
 from typing import Dict, List, Optional, Tuple
@@ -137,22 +138,62 @@ def run_agy(prompt: str, workdir: str, cfg: Dict, timeout: int, schema_path: str
     return _run(cmd, workdir, timeout, cfg.get("connector_env"))
 
 
-def _codex_mcp_override(path: str) -> str:
-    """Translate Rally's isolated MCP JSON into one invocation-local TOML value."""
-    with open(path) as handle:
-        server = (json.load(handle).get("mcpServers") or {}).get("rally-connectors") or {}
-    command = server.get("command")
-    if not command:
-        raise AgentError("Codex connector configuration has no gateway command")
-    args = ", ".join(json.dumps(str(value)) for value in (server.get("args") or []))
-    env = ", ".join(
-        "%s = %s" % (key, json.dumps(str(value)))
-        for key, value in sorted((server.get("env") or {}).items())
-    )
-    return (
-        "mcp_servers.rally-connectors={ command = %s, args = [%s], env = { %s } }"
-        % (json.dumps(str(command)), args, env)
-    )
+MCP_SERVER_ALLOWLIST = ("rally-connectors", "ruflo-research")
+MCP_ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _codex_mcp_overrides(path: str) -> List[str]:
+    """Translate Rally's closed MCP JSON into invocation-local TOML values.
+
+    Codex deliberately ignores the user's global configuration during a Rally
+    turn. This translator admits only Rally's two generated stdio facades and
+    rejects unknown server names or malformed fields before Codex starts.
+    """
+    try:
+        with open(path) as handle:
+            document = json.load(handle)
+    except (OSError, ValueError) as exc:
+        raise AgentError("cannot read Rally MCP configuration: %s" % exc)
+    servers = document.get("mcpServers") if isinstance(document, dict) else None
+    if not isinstance(servers, dict) or not servers:
+        raise AgentError("Rally MCP configuration has no servers")
+    unknown = sorted(set(servers) - set(MCP_SERVER_ALLOWLIST))
+    if unknown:
+        raise AgentError("Rally MCP configuration contains an unapproved server: %s"
+                         % ", ".join(unknown))
+
+    overrides = []
+    for name in MCP_SERVER_ALLOWLIST:
+        if name not in servers:
+            continue
+        server = servers[name]
+        if not isinstance(server, dict):
+            raise AgentError("Rally MCP server %s is not an object" % name)
+        if server.get("type", "stdio") != "stdio":
+            raise AgentError("Rally MCP server %s is not stdio" % name)
+        command = server.get("command")
+        args_values = server.get("args", [])
+        env_values = server.get("env", {})
+        if not isinstance(command, str) or not command:
+            raise AgentError("Rally MCP server %s has no gateway command" % name)
+        if (not isinstance(args_values, list)
+                or any(not isinstance(value, str) for value in args_values)):
+            raise AgentError("Rally MCP server %s has invalid arguments" % name)
+        if (not isinstance(env_values, dict)
+                or any(not isinstance(key, str) or not MCP_ENV_NAME.fullmatch(key)
+                       or not isinstance(value, str)
+                       for key, value in env_values.items())):
+            raise AgentError("Rally MCP server %s has invalid environment" % name)
+        args = ", ".join(json.dumps(value) for value in args_values)
+        env = ", ".join(
+            "%s = %s" % (key, json.dumps(value))
+            for key, value in sorted(env_values.items())
+        )
+        overrides.append(
+            "mcp_servers.%s={ command = %s, args = [%s], env = { %s } }"
+            % (name, json.dumps(command), args, env)
+        )
+    return overrides
 
 
 def run_codex(prompt: str, workdir: str, cfg: Dict, timeout: int,
@@ -165,8 +206,13 @@ def run_codex(prompt: str, workdir: str, cfg: Dict, timeout: int,
     Codex writes its final message to a private temporary file so CLI progress on
     stderr cannot corrupt the Rally JSON envelope.
     """
-    cmd = [
-        cfg.get("bin", "codex"), "exec",
+    cmd = [cfg.get("bin", "codex")]
+    if cfg.get("research_mode") == "ruflo":
+        # Web search is a native Codex capability. Ruflo coordinates the shared
+        # research plan and run-only memory; it never impersonates web access.
+        cmd.append("--search")
+    cmd += [
+        "exec",
         "--model", cfg["model"],
         "--cd", workdir,
         "--ephemeral",
@@ -177,7 +223,8 @@ def run_codex(prompt: str, workdir: str, cfg: Dict, timeout: int,
     cmd += list(cfg.get("exec_flags") or [])
     mcp_config = cfg.get("mcp_config_path")
     if mcp_config:
-        cmd += ["-c", _codex_mcp_override(mcp_config)]
+        for override in _codex_mcp_overrides(mcp_config):
+            cmd += ["-c", override]
     if schema_path:
         cmd += ["--output-schema", schema_path]
 

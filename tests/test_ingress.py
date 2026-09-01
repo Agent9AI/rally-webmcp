@@ -414,6 +414,15 @@ class TestRouting(unittest.TestCase):
         self.assertEqual(d["run_id"], "r-20260828-abc123")
         self.assertEqual(d["text"], "STOP")
 
+    def test_compact_human_subject_routes_as_a_note_reference(self):
+        kind, detail = classify_email(msg(
+            subject="Re: [Rally #260901-D3042D73] Complete — Challenge song",
+            text="Make the hook shorter.",
+        ))
+        self.assertEqual(kind, "note")
+        self.assertEqual(detail["run_id"], "260901-D3042D73")
+        self.assertEqual(detail["text"], "Make the hook shorter.")
+
     def test_note_beats_commission_when_tagged(self):
         """A reply into a live thread must not spawn a second run."""
         kind, _ = classify_email(msg(subject="[rally #r-1 t2] x", text="also do this"))
@@ -481,7 +490,18 @@ class TestRouting(unittest.TestCase):
         self.assertEqual(detail["request_key"], dashboard_payload()["run_id"])
         self.assertEqual(detail["source_run_id"], "r-20260831-source")
         self.assertTrue(detail["second_wind"])
+        self.assertEqual(detail["research_mode"], "standard")
         self.assertTrue(detail["task"].startswith("Prove the workflow\n\nGoal:\n"))
+
+        ruflo = dashboard_payload()
+        ruflo["job"]["research_mode"] = "ruflo"
+        kind, detail = I.classify_dashboard(ruflo)
+        self.assertEqual(kind, "commission")
+        self.assertEqual(detail["research_mode"], "ruflo")
+
+        invalid = dashboard_payload()
+        invalid["job"]["research_mode"] = "all"
+        self.assertEqual(I.classify_dashboard(invalid)[0], "ignored")
 
     def test_dashboard_envelope_rejects_extra_or_spoofed_authority(self):
         payload = dashboard_payload()

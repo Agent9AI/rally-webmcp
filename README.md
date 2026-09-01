@@ -58,6 +58,37 @@ Both are read-only. Returned run content is treated as untrusted data.
 The start tool does not accept a hidden prompt. It reads the form the person can
 see. The existing idempotency key and workspace policy remain attached.
 
+## Ruflo research reserve
+
+Rally now has an optional, visibly armed research profile for unusually heavy
+jobs. Open **Research reserve**, review its boundary, then press **Arm Ruflo for
+this job**. WebMCP can request the same `research_mode: "ruflo"`, but it must
+open and update that real control before the existing start tool can submit it.
+
+Ruflo does not become a fourth Rally worker. Claude, Gemini, and Codex remain
+accountable for checklist ownership and cross-family verification. Ruflo is a
+run-scoped MCP coordinator with exactly seven facade tools for guidance,
+routing, and private run memory. Rally blocks Ruflo's shell, browser, GitHub,
+agent-execution, daemon, federation, connector credentials, and cross-run
+memory surfaces.
+
+The boundary is enforced three times:
+
+1. the authenticated Worker advertises and accepts the profile only behind its
+   producer feature gate;
+2. the runner freezes an immutable per-run authority record, verifies Ruflo
+   `3.38.20`, and never silently downgrades a rejected research job;
+3. `bin/rally-ruflo` filters discovery and rejects every unapproved direct
+   `tools/call`, even though Ruflo's native selector does not enforce that by
+   itself.
+
+Claude receives the strict combined MCP file. Codex keeps `--ignore-user-config`,
+receives only Rally's two invocation-local MCP servers, and enables its native
+web search for research runs. Gemini receives a canonical workspace MCP file
+restored from the immutable authority immediately before its turn. Model sign-in
+still comes from each user's own CLI subscription; an OpenAI Pro account can
+authenticate Codex while Ruflo remains the local MCP coordination layer.
+
 ## Three real Rally jobs to demonstrate
 
 ### Make the WebMCP launch song
@@ -118,6 +149,8 @@ The Worker already implements:
 - `GET /v1/workspace/runs` — private workspace queue;
 - `GET /v1/workspace/runs/:id` — real run detail;
 - `GET /v1/workspace/artifacts/:id/:name` — integrity-checked deliverables.
+- `GET /v1/workspace/capabilities` — authenticated producer receipt for the
+  optional Ruflo reserve.
 
 The original `rally.agent9.dev/` root still serves the v1 Pages project. The
 Worker now reserves `/v2/` for the derivative Pages project while reusing the
@@ -137,6 +170,10 @@ ten-minute, one-use key that the person pastes into the same Rally tab. A closed
 - The browser's execution `AbortSignal` reaches the authenticated POST.
 - Run timelines, agent names, and deliverable metadata are returned as untrusted.
 - Credentials stay inside the page's existing authentication and connector code.
+- Ruflo is off by default, applies to one submitted run, and resets to Standard
+  immediately after a successful submission.
+- Completed verified artifacts are fetched through the authenticated workspace
+  endpoint and exposed as accessible Play/Download controls.
 - Closing the page aborts the registration lifecycle.
 
 ## Repository map

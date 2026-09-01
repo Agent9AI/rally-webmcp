@@ -156,6 +156,55 @@ def _independently_complete(state: Dict) -> bool:
     )
 
 
+def _artifact_independently_verified(state: Dict, receipt: Dict) -> bool:
+    """Allow a media artifact once its declared checks have independent proof.
+
+    A run can honestly remain halted while a useful deliverable is already
+    ready for review.  In that case the generation receipt must name every
+    checklist item that verifies the artifact, every named item must be done
+    with owner/verifier separation, and at least one evidence receipt must bind
+    the exact filename to the exact content hash.  Fully completed legacy runs
+    retain their existing behavior without requiring the new receipt field.
+    """
+    if _independently_complete(state):
+        return True
+    check_ids = receipt.get("verified_checklist_ids")
+    if not isinstance(check_ids, list) or not check_ids or len(check_ids) > 20:
+        return False
+    normalized = [
+        _text(check_id, 48)
+        for check_id in check_ids
+        if isinstance(check_id, str)
+    ]
+    if len(normalized) != len(check_ids) or len(set(normalized)) != len(normalized):
+        return False
+    checklist = {
+        _text(item.get("id"), 48): item
+        for item in (state.get("checklist") or [])
+        if isinstance(item, dict) and item.get("id")
+    }
+    verified = []
+    for check_id in normalized:
+        item = checklist.get(check_id)
+        if (
+            not item
+            or item.get("state") != "done"
+            or not item.get("owner")
+            or not item.get("verified_by")
+            or item.get("owner") == item.get("verified_by")
+            or not item.get("evidence")
+        ):
+            return False
+        verified.append(item)
+    filename = _text(receipt.get("filename"), 96)
+    sha256 = _text(receipt.get("sha256"), 64).lower()
+    return any(
+        filename in str(item.get("evidence"))
+        and sha256 in str(item.get("evidence")).lower()
+        for item in verified
+    )
+
+
 def _artifact_workspace(state: Dict) -> Optional[str]:
     """Resolve the isolated run workspace without trusting a stored path."""
     run_id = _text(state.get("run_id"), 80)
@@ -234,8 +283,6 @@ def _verified_artifacts(state: Dict, status: str = "staged") -> List[Dict]:
     """Return bounded metadata for locally present, independently verified media."""
     if status not in {"staged", "ready"}:
         raise ConsoleError("artifact status is invalid")
-    if not _independently_complete(state):
-        return []
     artifacts = []
     seen = set()
     total = 0
@@ -250,6 +297,8 @@ def _verified_artifacts(state: Dict, status: str = "staged") -> List[Dict]:
             or not ARTIFACT_FILENAME_RE.fullmatch(filename)
             or not ARTIFACT_SHA256_RE.fullmatch(sha256)
         ):
+            continue
+        if not _artifact_independently_verified(state, receipt):
             continue
         extension = os.path.splitext(filename)[1].lower()
         expected_mime = transport.ATTACHMENT_TYPES.get(extension)
@@ -450,6 +499,13 @@ def build_snapshot(
     task = _public_text(state.get("task"), 2000, redactions)
     title = _title(task)
     status = _status(state)
+    research_mode = "ruflo" if state.get("research_mode") == "ruflo" else "standard"
+    research_status = (
+        "active" if research_mode == "ruflo" and state.get("research_authority")
+        else "rejected" if research_mode == "ruflo" and state.get("research_failure")
+        else "pending" if research_mode == "ruflo"
+        else "off"
+    )
     assert status in STATUSES
     return {
         "schema_version": 1,
@@ -481,6 +537,11 @@ def build_snapshot(
                 "max_recoveries_per_run": max(
                     0, int(continuity.get("max_recoveries_per_run") or 0)
                 ),
+            },
+            "research": {
+                "mode": research_mode,
+                "status": research_status,
+                "scope": "run_only" if research_mode == "ruflo" else None,
             },
         },
         "coordination": {

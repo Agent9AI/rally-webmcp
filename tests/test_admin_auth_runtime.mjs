@@ -179,7 +179,28 @@ async function fetchMock(input, options = {}) {
     });
   }
   if (url.pathname.endsWith("/v1/auth/logout")) return Response.json({ revoked: true });
+  if (url.pathname === "/v1/workspace/capabilities") {
+    return Response.json({
+      schema_version: 1,
+      research_profiles: ["standard", "ruflo"],
+      ruflo: { available: true, version: "3.38.20", scope: "run_only" },
+    });
+  }
+  if (url.pathname === "/v1/workspace/jobs" && (options.method || "GET") === "POST") {
+    return Response.json({
+      run_id: "r-20260901-d3042d73-9378-4516-8e63-5960d47db896",
+      status: "accepted",
+      accepted_at: "2026-09-01T23:15:00Z",
+    }, { status: 202 });
+  }
   if (url.pathname === "/v1/workspace/runs") return Response.json({ runs: [] });
+  if (url.pathname.startsWith("/v1/workspace/runs/")) {
+    return Response.json({
+      run_id: url.pathname.split("/").pop(), title: "Deep WebMCP research",
+      status: "queued", progress: { done: 0, total: 0 }, checklist: [],
+      agents: [], artifacts: [], timeline: [],
+    });
+  }
   if (url.pathname.endsWith("/v1/email-provider-options")) {
     return Response.json({ pilot_address: "", providers: [], trial_domain: "updates.agent9.dev" });
   }
@@ -283,6 +304,27 @@ for (const call of calls.filter((call) => !call.url.pathname.endsWith("/magic-li
   assert(!JSON.stringify(call.body).includes(validToken), "key leaked outside the consume request");
   assert(!call.url.href.includes(validToken), "key leaked into a URL");
 }
+
+const prepareResearch = registrations.get("rally_prepare_job").tool;
+const startVisible = registrations.get("rally_start_visible_job").tool;
+const prepared = await prepareResearch.execute({
+  title: "Deep WebMCP research",
+  goal: "Reconcile primary sources and produce an independently verified competition brief.",
+  research_mode: "ruflo",
+  second_wind: true,
+});
+assert.equal(prepared.research_mode, "ruflo");
+assert.equal(elementFor("[data-research-reserve]").dataset.state, "armed");
+assert.equal(elementFor("[data-research-arm]").getAttribute("aria-pressed"), "true");
+assert.match(elementFor("[data-composer-research]").textContent, /Ruflo research/);
+
+const started = await startVisible.execute({});
+assert.equal(started.research_mode, "ruflo");
+const jobCall = calls.find((call) => call.url.pathname === "/v1/workspace/jobs");
+assert.equal(jobCall.body.research_mode, "ruflo");
+assert.equal(elementFor("[data-research-reserve]").dataset.state, "sealed");
+assert.equal(elementFor("[data-research-arm]").getAttribute("aria-pressed"), "false");
+assert.match(elementFor("[data-job-receipt-detail]").textContent, /Ruflo armed for this run/);
 
 await signOut.dispatch("click");
 assert.equal(signedOut.hidden, false);

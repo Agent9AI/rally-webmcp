@@ -74,7 +74,7 @@ Workdir: /Users/private/runs/demo"""
 
         self.assertEqual(
             rendered["subject"],
-            "[rally #r-20260831-demo] Request accepted — Build the board brief",
+            "[Rally #260831-DEMO] Request accepted — Build the board brief",
         )
         self.assertEqual(rendered["reply_to"], "Rally <rally@updates.agent9.dev>")
         self.assertIn("Your request is underway.", rendered["text"])
@@ -82,6 +82,19 @@ Workdir: /Users/private/runs/demo"""
         self.assertLess(rendered["text"].index("Outcome"), rendered["text"].index("AUDIT RECEIPT"))
         self.assertIn("Evidence revision: abc123", rendered["text"])
         self.assertNotIn('"checklist"', rendered["text"])
+
+    def test_uuid_job_number_is_compact_but_audit_receipt_keeps_exact_id(self):
+        run_id = "r-20260901-d3042d73-9378-4516-8e63-5960d47db896"
+        rendered = transport._rally_lifecycle_message(
+            "[rally #%s] Create the challenge song" % run_id,
+            self.turn_text(),
+            {"X-Rally-Run": run_id, "X-Rally-Turn": "0"},
+        )
+        self.assertEqual(
+            rendered["subject"],
+            "[Rally #260901-D3042D73] Request accepted — Create the challenge song",
+        )
+        self.assertIn("Run: %s" % run_id, rendered["text"])
 
     def test_html_is_table_based_self_contained_and_hides_machine_noise(self):
         rendered = transport._rally_lifecycle_message(

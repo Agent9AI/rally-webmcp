@@ -5,6 +5,9 @@
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   "preview_urls": false,
+  "vars": {
+    "RUFLO_RESEARCH_ENABLED": "1"
+  },
   "routes": [
     {
       "pattern": "rally.agent9.dev",

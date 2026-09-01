@@ -52,9 +52,26 @@ def config(enabled=False, public=False):
 
 
 class ConsoleSnapshotTests(unittest.TestCase):
-    def verified_media_state(self, workspace, content=b"ID3\x04\x00\x00song"):
+    def verified_media_state(
+        self,
+        workspace,
+        content=b"ID3\x04\x00\x00song",
+        verified_checklist_ids=None,
+    ):
         with open(os.path.join(workspace, "deliverable-song.mp3"), "wb") as handle:
             handle.write(content)
+        sha256 = hashlib.sha256(content).hexdigest()
+        receipt = {
+            "kind": "song",
+            "status": "ready",
+            "model": "lyria-3-pro-preview",
+            "filename": "deliverable-song.mp3",
+            "mime_type": "audio/mpeg",
+            "bytes": len(content),
+            "sha256": sha256,
+        }
+        if verified_checklist_ids is not None:
+            receipt["verified_checklist_ids"] = verified_checklist_ids
         return state(
             workdir=workspace,
             halt={"reason": "complete"},
@@ -64,18 +81,10 @@ class ConsoleSnapshotTests(unittest.TestCase):
                 "state": "done",
                 "owner": "agy",
                 "verified_by": "claude",
-                "evidence": "Audio decoded and reviewed",
+                "evidence": "deliverable-song.mp3 verified at sha256 %s" % sha256,
                 "rejections": 0,
             }],
-            media_generations=[{
-                "kind": "song",
-                "status": "ready",
-                "model": "lyria-3-pro-preview",
-                "filename": "deliverable-song.mp3",
-                "mime_type": "audio/mpeg",
-                "bytes": len(content),
-                "sha256": hashlib.sha256(content).hexdigest(),
-            }],
+            media_generations=[receipt],
         )
 
     def test_snapshot_excludes_private_runner_fields(self):
@@ -113,6 +122,21 @@ class ConsoleSnapshotTests(unittest.TestCase):
             with self.subTest(halt=halt):
                 payload = rally_console.build_snapshot(state(halt=halt), config())
                 self.assertEqual(payload["status"], expected)
+
+    def test_research_profile_is_visible_without_exposing_authority_paths(self):
+        payload = rally_console.build_snapshot(state(
+            research_mode="ruflo",
+            research_authority={
+                "mode": "ruflo",
+                "profile_dir": "/private/run/research",
+                "mcp_config_path": "/private/run/research/mcp-config.json",
+            },
+        ), config())
+        self.assertEqual(payload["policy"]["research"], {
+            "mode": "ruflo", "status": "active", "scope": "run_only",
+        })
+        self.assertNotIn("profile_dir", json.dumps(payload))
+        self.assertNotIn("mcp_config_path", json.dumps(payload))
 
     def test_progress_and_verifier_come_from_checklist(self):
         checklist = [{
@@ -223,6 +247,52 @@ class ConsoleSnapshotTests(unittest.TestCase):
                     rally_console.build_snapshot(pending, config())["artifacts"],
                     [],
                 )
+
+    def test_individually_verified_media_is_projected_while_run_needs_attention(self):
+        with tempfile.TemporaryDirectory() as runs:
+            workspace = os.path.join(runs, state()["run_id"], "workspace")
+            os.makedirs(workspace)
+            pending = self.verified_media_state(
+                workspace,
+                verified_checklist_ids=["c1"],
+            )
+            pending["halt"] = {"reason": "turn_budget"}
+            with mock.patch.object(rally_console.transport, "RUNS_ROOT", runs):
+                payload = rally_console.build_snapshot(pending, config())
+
+        self.assertEqual(payload["status"], "halted")
+        self.assertEqual(payload["artifacts"][0]["filename"], "deliverable-song.mp3")
+
+    def test_artifact_level_verification_is_fail_closed(self):
+        with tempfile.TemporaryDirectory() as runs:
+            workspace = os.path.join(runs, state()["run_id"], "workspace")
+            os.makedirs(workspace)
+            pending = self.verified_media_state(
+                workspace,
+                verified_checklist_ids=["c1"],
+            )
+            pending["halt"] = {"reason": "turn_budget"}
+            cases = {
+                "unknown check": lambda value: value["media_generations"][0].update(
+                    verified_checklist_ids=["c9"]
+                ),
+                "open check": lambda value: value["checklist"][0].update(state="open"),
+                "self approved": lambda value: value["checklist"][0].update(
+                    verified_by="agy"
+                ),
+                "unbound evidence": lambda value: value["checklist"][0].update(
+                    evidence="Audio reviewed without an identity receipt"
+                ),
+            }
+            with mock.patch.object(rally_console.transport, "RUNS_ROOT", runs):
+                for label, mutate in cases.items():
+                    candidate = json.loads(json.dumps(pending))
+                    mutate(candidate)
+                    with self.subTest(label=label):
+                        self.assertEqual(
+                            rally_console.build_snapshot(candidate, config())["artifacts"],
+                            [],
+                        )
 
     def test_run_root_symlink_cannot_escape_artifact_boundary(self):
         with tempfile.TemporaryDirectory() as runs, tempfile.TemporaryDirectory() as outside:

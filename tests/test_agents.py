@@ -152,6 +152,43 @@ class TestModelPinning(unittest.TestCase):
         self.assertIn("mcp_servers.rally-connectors", override)
         self.assertIn("/private/policy.json", override)
 
+    def test_codex_research_mode_gets_only_two_invocation_local_servers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            mcp_path = os.path.join(directory, "mcp.json")
+            with open(mcp_path, "w") as handle:
+                json.dump({"mcpServers": {
+                    "rally-connectors": {
+                        "type": "stdio", "command": "/rally/connectors",
+                        "args": [], "env": {},
+                    },
+                    "ruflo-research": {
+                        "type": "stdio", "command": "/rally/ruflo",
+                        "args": ["--profile", "/private/run/research"], "env": {},
+                    },
+                }}, handle)
+            cfg = {name: dict(value) for name, value in CFG.items()}
+            cfg["codex"]["mcp_config_path"] = mcp_path
+            cfg["codex"]["research_mode"] = "ruflo"
+            command = capture("codex", cfg)
+        self.assertEqual(command[:3], ["codex", "--search", "exec"])
+        overrides = [command[index + 1] for index, value in enumerate(command) if value == "-c"]
+        self.assertEqual(len(overrides), 2)
+        self.assertIn("mcp_servers.rally-connectors", overrides[0])
+        self.assertIn("mcp_servers.ruflo-research", overrides[1])
+
+    def test_codex_refuses_an_unapproved_mcp_server(self):
+        with tempfile.TemporaryDirectory() as directory:
+            mcp_path = os.path.join(directory, "mcp.json")
+            with open(mcp_path, "w") as handle:
+                json.dump({"mcpServers": {
+                    "ruflo-research": {"command": "/rally/ruflo"},
+                    "terminal-everything": {"command": "/bin/sh"},
+                }}, handle)
+            cfg = {name: dict(value) for name, value in CFG.items()}
+            cfg["codex"]["mcp_config_path"] = mcp_path
+            with self.assertRaisesRegex(A.AgentError, "unapproved server"):
+                capture("codex", cfg)
+
     def test_all_shipped_workers_have_distinct_families(self):
         A.assert_pins(CFG)
         self.assertEqual({cfg["family"] for cfg in CFG.values()}, {

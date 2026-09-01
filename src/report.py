@@ -17,6 +17,7 @@ HALT_MEANING = {
     "disputed": ("HALT", "Independent agents disagreed three times on the same item and escalated to you."),
     "blocked": ("HALT", "An item needs something only you can provide."),
     "agent_error": ("HALT", "Both bounded model attempts failed before a safe continuation was accepted."),
+    "research_unavailable": ("HALT", "The requested Ruflo reserve failed its safety check, so no model work started and Rally did not silently downgrade the job."),
     "stopped_by_human": ("HALT", "You stopped this run."),
 }
 

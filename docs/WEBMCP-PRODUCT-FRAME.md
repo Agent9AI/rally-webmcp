@@ -58,8 +58,8 @@ The final sub-three-minute video should show one uninterrupted root-page flow:
    registrations.
 2. Ask Rally to find a blocked public run and inspect its verification gap.
    The same record opens in the visible D1-backed console.
-3. Ask Rally to stage a 72-second original WebMCP Challenge song. The brief
-   appears in both the integrated launch workspace and governed Rally draft.
+3. Ask Rally to stage a 72-second original WebMCP Challenge song. Rally opens
+   the native browser-task dialog and synchronizes the governed Rally draft.
 4. Edit the brief manually. Rally records a page-local semantic revision label,
    not the field contents or raw keystrokes.
 5. Ask the browser agent to review the visible song revision as untrusted. Show
@@ -68,7 +68,7 @@ The final sub-three-minute video should show one uninterrupted root-page flow:
    draft route and the `published: false` boundary.
 7. Stage the n8n connector profile. Show exact admission gates and
    `connected: false`.
-8. End on the root protocol map: WebMCP is the shared page; Rally owns
+8. End on the compact v2 boundary: WebMCP is the shared page; Rally owns
    authority; MCP is the separate business-tool gateway; A2A is the
    outside-agent handoff.
 
@@ -84,8 +84,8 @@ agent inspects → agent stages v1 → human edits v2
 ```
 
 This is not a remote endpoint renamed as WebMCP. The handlers reuse Rally's
-public console, onboarding draft, editors, receipts, tabs, and collaboration
-trail.
+public console and onboarding draft, then open one product-native task dialog
+for the editors, receipt, tabs, and collaboration trail.
 
 ## Final seven-tool strategy
 
@@ -142,9 +142,9 @@ and remote remain protected; this derivative publishes independently.
 ```text
 rally-webmcp/
 ├── site/
-│   ├── index.html             integrated Rally v2 + WebMCP workspace
+│   ├── index.html             Rally v1 product + compact v2 dialog
 │   ├── app.js                 seven tool definitions and handlers
-│   └── styles.css             responsive root product and workspace
+│   └── styles.css             original product + responsive task dialog
 ├── src/
 │   ├── media.py               bounded Lyria generation boundary
 │   ├── runner.py              deterministic execution authority

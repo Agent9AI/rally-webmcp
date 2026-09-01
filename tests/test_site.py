@@ -31,29 +31,32 @@ class TestProductSite(unittest.TestCase):
 
     def test_event_copy_is_current_and_stale_event_is_absent(self):
         for phrase in (
-            "Rally for WebMCP — Accountable AI teammates on the same page",
-            "Rally gives browser agents bounded WebMCP tools",
-            "Rally v2 · Built for the WebMCP Challenge",
-            "Rally v2 · WebMCP-native collaboration",
-            "Now you share the page.",
-            "7 bounded page tools · 0 silent writes",
+            "Rally v2 — Accountable AI teammates, now WebMCP-ready",
+            "Give your company accountable AI teammates employees can email like coworkers",
+            "Built for the WebMCP Challenge",
+            "Rally v2 · 7 bounded page tools",
+            "You already have email.",
+            "Add accountable AI teammates.",
             'property="og:url" content="https://rally-webmcp.pages.dev/"',
             'rel="canonical" href="https://rally-webmcp.pages.dev/"',
         ):
             self.assertIn(phrase, self.html)
-        self.assertIn('href="#webmcp">Try Rally\'s WebMCP studio', self.html)
+        self.assertIn('href="#demo">Watch an email become an outcome', self.html)
+        self.assertIn('data-open-webmcp data-webmcp-open-workflow="song">Rally v2 · 7 bounded page tools', self.html)
         self.assertNotIn('href="webmcp/"', self.html)
+        self.assertNotIn("Now you share the page.", self.html)
+        self.assertNotIn("Try Rally's WebMCP studio", self.html)
         self.assertNotIn("dev" + "fest", self.html.lower())
 
-    def test_root_integrated_webmcp_studio_is_judge_ready(self):
+    def test_rally_native_webmcp_dialog_is_judge_ready(self):
         with open(os.path.join(SITE, "app.js")) as handle:
             app = handle.read()
 
         for phrase in (
-            'class="workspace-section webmcp-v2-section"',
-            "WebMCP makes the handoff visible.",
-            "Shared launch studio",
-            "document.modelContext · top-level imperative tools",
+            'class="webmcp-sprint"',
+            'class="webmcp-work-dialog"',
+            "Ask Rally on the page.",
+            "Prepare the work together.",
             "Original song",
             "Insights draft",
             "MCP onboarding",
@@ -65,8 +68,16 @@ class TestProductSite(unittest.TestCase):
             "Not a browser recorder.",
         ):
             self.assertIn(phrase, self.html)
+        self.assertEqual(self.html.count('class="app-window'), 1)
+        self.assertNotIn("webmcp-v2-section", self.html)
+        self.assertNotIn("Shared launch studio", self.html)
+        self.assertNotIn("webmcp-v2-window", self.html)
+        self.assertIn('role="status" aria-live="polite" aria-atomic="false"', self.html)
         self.assertEqual(self.html.count("data-webmcp-workflow="), 3)
         self.assertEqual(self.html.count("data-webmcp-panel="), 3)
+        self.assertIn('const webMcpDialog = document.querySelector("[data-webmcp-dialog]")', app)
+        self.assertIn('const openWebMcpDialog = (workflow = "song"', app)
+        self.assertNotIn('document.querySelector("#webmcp")?.scrollIntoView', app)
 
         registration = app.split("async function registerRallyWebMcpTools()", 1)[1]
         registration = registration.split("void registerRallyWebMcpTools()", 1)[0]
@@ -126,7 +137,7 @@ class TestProductSite(unittest.TestCase):
             "A2A is reserved for bounded outside-agent task and artifact handoffs",
             "WebMCP does not connect remote MCP servers.",
             "MCP gateway",
-            "Outside-agent handoffs",
+            "outside-agent task and artifact handoffs",
         ):
             self.assertIn(boundary, self.html + app)
 

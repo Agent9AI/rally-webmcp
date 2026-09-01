@@ -23,7 +23,8 @@ authorize or connect an MCP server, send, or deploy.
 
 | Judge surface | Location |
 |---|---|
-| **Live root app** | **DEPLOYMENT / IN-APP VERIFICATION PENDING** — intended URL: `https://rally-webmcp.pages.dev/` |
+| **Review build** | `https://v2-native-review.rally-webmcp.pages.dev/` — production promotion and in-app verification still pending |
+| Intended live root | `https://rally-webmcp.pages.dev/` |
 | Local root app | `http://127.0.0.1:8765/` |
 | WebMCP implementation | [`site/app.js`](site/app.js) |
 | Integrated interface | [`site/index.html`](site/index.html) |
@@ -39,8 +40,9 @@ authorize or connect an MCP server, send, or deploy.
 Without WebMCP, an agent must infer controls from pixels and the person must
 hope it understood the interface. Rally exposes a small contract of named
 JavaScript tools with closed schemas. Tool calls reuse Rally's real page logic:
-the live public-run console, governed job draft, shared launch workspace,
-human-editable fields, deterministic review receipt, and semantic turn trail.
+the live public-run console, governed job draft, compact v2 entry point, native
+browser-task dialog, human-editable fields, deterministic review receipt, and
+semantic turn trail.
 
 ```text
 agent inspects evidence → agent stages v1 → person edits v2
@@ -57,7 +59,7 @@ the same controls the person can see and change.
 | `rally_list_public_runs` | Reads Rally's explicitly public Cloudflare D1 projection, filters it, and updates the live console | Public read only; no run changes |
 | `rally_inspect_public_run` | Opens one public run and returns a bounded checklist and verification receipt | Public read only; returned descriptions and evidence are untrusted |
 | `rally_draft_job` | Populates Rally's governed teammate/job fields | Draft only; nothing submitted or stored |
-| `rally_stage_challenge_song` | Composes the original Lyria commission in the integrated song workspace and underlying Rally job draft | No Lyria call, audio, storage, delivery, or publication |
+| `rally_stage_challenge_song` | Composes the original Lyria commission in Rally's browser-task dialog and underlying Rally job draft | No Lyria call, audio, storage, delivery, or publication |
 | `rally_stage_insights_draft` | Composes an editable Agent9 Insights title, deck, and article | No n8n, EmDash, Workers, D1, storage, or publishing call |
 | `rally_stage_connector_plan` | Composes a fixed-profile MCP admission plan | No arbitrary URL, credential, discovery, OAuth, authorization, or connection |
 | `rally_review_visible_draft` | Reviews the selected song, Insights, or connector revision and updates its visible receipt | Untrusted page read-back; no approval or execution |

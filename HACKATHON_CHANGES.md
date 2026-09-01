@@ -50,11 +50,12 @@ page and its existing product narrative.
 
 ### Root product and browser runtime
 
-- `site/index.html` integrates the WebMCP story into the event bar, hero,
-  navigation, proof counters, shared launch workspace, three workflow editors,
-  receipts, semantic trail, effect flags, and WebMCP/Rally/MCP/A2A protocol map.
-- `site/styles.css` supplies the responsive, accessible integrated workspace
-  without replacing Rally's original product experience.
+- `site/index.html` preserves Rally's original hero, proof counters, live
+  workspace, connectors, and security story, then adds a compact v2 entry and
+  one native browser-task dialog for the three workflow editors, receipt,
+  semantic trail, and protocol boundary.
+- `site/styles.css` reuses Rally's exact tokens and component language for the
+  responsive dialog without adding a second product shell.
 - `site/app.js` retains the three disclosed baseline tools and adds four
   top-level imperative tools, producing the final seven-tool registry:
 

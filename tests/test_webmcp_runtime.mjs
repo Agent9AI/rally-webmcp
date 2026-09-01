@@ -32,6 +32,8 @@ const node = (tag = "div") => {
     textContent: "",
     value: "",
     checked: false,
+    showModal() { this.open = true; },
+    close() { this.open = false; },
     append(...children) { this.children.push(...children); },
     replaceChildren(...children) { this.children = children; },
     setAttribute(name, value) { this[name] = String(value); },
@@ -132,6 +134,17 @@ const studioSummary = node("p");
 const studioWorkflow = node("b");
 const studioDestination = node("b");
 const studioChecks = node("ul");
+const webMcpDialog = node("dialog");
+const workflowTabs = ["song", "insights", "connector"].map((workflow) => {
+  const tab = node("button");
+  tab.dataset.webmcpWorkflow = workflow;
+  return tab;
+});
+const workflowPanels = ["song", "insights", "connector"].map((workflow) => {
+  const panel = node("section");
+  panel.dataset.webmcpPanel = workflow;
+  return panel;
+});
 
 const elements = new Map([
   ['meta[name="rally-console-api"]', { content: "https://public.example.test/v1/console" }],
@@ -159,6 +172,10 @@ const elements = new Map([
   ["[data-webmcp-studio-workflow]", studioWorkflow],
   ["[data-webmcp-studio-destination]", studioDestination],
   ["[data-webmcp-studio-checks]", studioChecks],
+  ["[data-webmcp-dialog]", webMcpDialog],
+  ['[data-webmcp-workflow="song"]', workflowTabs[0]],
+  ['[data-webmcp-workflow="insights"]', workflowTabs[1]],
+  ['[data-webmcp-workflow="connector"]', workflowTabs[2]],
   ["[data-webmcp-song-direction]", songDirection],
   ["[data-webmcp-song-hook]", songHook],
   ["[data-webmcp-song-style]", songStyle],
@@ -252,6 +269,8 @@ const document = {
   querySelectorAll(selector) {
     if (selector === "[data-webmcp-trace]") return [traceList];
     if (selector === "[data-webmcp-track]") return trackedFields;
+    if (selector === "[data-webmcp-workflow]") return workflowTabs;
+    if (selector === "[data-webmcp-panel]") return workflowPanels;
     return [];
   },
 };
@@ -379,6 +398,10 @@ assert.match(songBrief.value, /named, structured tools/i);
 assert.match(songBrief.value, /Agent9 Insights[\s\S]*allowlisted n8n(?: MCP)? workflow[\s\S]*EmDash/i);
 assert.match(songBrief.value, /WebMCP is the shared browser surface[\s\S]*governed MCP[\s\S]*A2A/i);
 assert.equal(goal.value, songBrief.value);
+assert.equal(webMcpDialog.open, true, "song staging did not reveal the Rally browser-task dialog");
+assert.equal(workflowTabs[0]["aria-selected"], "true");
+assert.equal(workflowPanels[0].hidden, false);
+assert.equal(workflowPanels[1].hidden, true);
 assert.equal(fetchCalls.length, callsAfterPublicReads, "song staging caused a network request");
 
 const reviewTool = tools.get("rally_review_visible_draft");
@@ -401,6 +424,8 @@ assertNoExternalEffects(stagedInsights);
 assert.match(insightsBody.value, /allowlisted n8n MCP workflow/i);
 assert.match(insightsBody.value, /It does not publish/i);
 assert.match(insightsBody.value, /not a general browser recorder/i);
+assert.equal(workflowTabs[1]["aria-selected"], "true");
+assert.equal(workflowPanels[1].hidden, false);
 assert.equal(fetchCalls.length, callsAfterPublicReads, "Insights staging caused a network request");
 
 const stagedConnector = await tools.get("rally_stage_connector_plan").execute({
@@ -414,6 +439,8 @@ assertNoExternalEffects(stagedConnector);
 assert.match(connectorPlan.value, /never accepts an arbitrary URL/i);
 assert.match(connectorPlan.value, /Every write needs explicit human approval/i);
 assert.match(connectorPlan.value, /No discovery, authorization, network request, storage, or connection has started/i);
+assert.equal(workflowTabs[2]["aria-selected"], "true");
+assert.equal(workflowPanels[2].hidden, false);
 assert.equal(fetchCalls.length, callsAfterPublicReads, "connector staging caused a network request");
 
 await assert.rejects(

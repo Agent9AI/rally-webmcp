@@ -28,6 +28,9 @@ const webMcpStudioSummary = document.querySelector("[data-webmcp-studio-summary]
 const webMcpStudioWorkflow = document.querySelector("[data-webmcp-studio-workflow]");
 const webMcpStudioDestination = document.querySelector("[data-webmcp-studio-destination]");
 const webMcpStudioChecks = document.querySelector("[data-webmcp-studio-checks]");
+const webMcpDialog = document.querySelector("[data-webmcp-dialog]");
+const webMcpDialogClose = document.querySelector("[data-close-webmcp]");
+const webMcpOpenButtons = document.querySelectorAll("[data-open-webmcp]");
 
 const updateHeader = () => header?.classList.toggle("is-scrolled", window.scrollY > 18);
 updateHeader();
@@ -50,10 +53,48 @@ const activateSetupTab = (target) => {
   });
 };
 
+const openWebMcpDialog = (workflow = "song", { focus = true } = {}) => {
+  activateWebMcpWorkflow(workflow);
+  if (webMcpDialog && !webMcpDialog.open) webMcpDialog.showModal();
+  if (focus) {
+    window.requestAnimationFrame(() => {
+      document.querySelector(`[data-webmcp-workflow="${workflow}"]`)?.focus();
+    });
+  }
+};
+
+const visibleWebMcpDialogControls = () => {
+  if (!webMcpDialog) return [];
+  return [...webMcpDialog.querySelectorAll(
+    'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+  )].filter((control) => !control.closest("[hidden]") && control.getClientRects().length > 0);
+};
+
 openButtons.forEach((button) => button.addEventListener("click", openSetupDialog));
 closeButton?.addEventListener("click", () => dialog?.close());
 dialog?.addEventListener("click", (event) => {
   if (event.target === dialog) dialog.close();
+});
+webMcpDialogClose?.addEventListener("click", () => webMcpDialog?.close());
+webMcpDialog?.addEventListener("click", (event) => {
+  if (event.target === webMcpDialog) webMcpDialog.close();
+});
+webMcpDialog?.addEventListener("keydown", (event) => {
+  if (event.key !== "Tab") return;
+  const controls = visibleWebMcpDialogControls();
+  const first = controls[0];
+  const last = controls.at(-1);
+  if (!first || !last) return;
+  if (event.shiftKey && (document.activeElement === first || !webMcpDialog.contains(document.activeElement))) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && (document.activeElement === last || !webMcpDialog.contains(document.activeElement))) {
+    event.preventDefault();
+    first.focus();
+  }
+});
+webMcpOpenButtons.forEach((button) => {
+  button.addEventListener("click", () => openWebMcpDialog(button.dataset.webmcpOpenWorkflow || "song"));
 });
 
 tabs.forEach((tab) => {
@@ -1029,7 +1070,7 @@ async function webMcpStageChallengeSong(input = {}, options = {}) {
       { passed: false, label: "Human revision review pending" },
     ],
   });
-  document.querySelector("#webmcp")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  openWebMcpDialog("song", { focus: options.source !== "human" });
 
   return {
     status: "staged_not_generated",
@@ -1102,7 +1143,7 @@ async function webMcpStageInsightsDraft(input = {}, options = {}) {
     state: "Awaiting human review",
     model: "Rally WebMCP editor",
     artifact: "EmDash journal draft",
-    note: "The article is editable in the WebMCP studio. Nothing was sent to n8n or EmDash, and no publication action exists here.",
+    note: "The article is editable in Rally's browser-task dialog. Nothing was sent to n8n or EmDash, and no publication action exists here.",
   });
   setWebMcpStudioReceipt({
     workflow: "Insights draft",
@@ -1117,7 +1158,7 @@ async function webMcpStageInsightsDraft(input = {}, options = {}) {
       { passed: false, label: "Human revision review pending" },
     ],
   });
-  document.querySelector("#webmcp")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  openWebMcpDialog("insights", { focus: options.source !== "human" });
   return {
     status: "staged_not_published",
     workflow: "insights",
@@ -1209,7 +1250,7 @@ async function webMcpStageConnectorPlan(input = {}, options = {}) {
       { passed: false, label: "Human revision review pending" },
     ],
   });
-  document.querySelector("#webmcp")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  openWebMcpDialog("connector", { focus: options.source !== "human" });
   return {
     status: "staged_not_connected",
     workflow: "connector",
@@ -1287,6 +1328,7 @@ async function webMcpReviewVisibleDraft(input = {}, options = {}) {
     connector: { label: "MCP onboarding", title: "Connector admission plan reviewed", destination: "Rally gateway plan", model: "Rally MCP gateway", artifact: "Connector policy plan" },
   }[workflow];
   activateWebMcpWorkflow(workflow);
+  openWebMcpDialog(workflow, { focus: options.source !== "human" });
   recordWebMcpInteraction(
     options.source === "human" ? "human" : "agent",
     options.source === "human" ? `reviewed ${workflow} from page controls` : "tool · rally_review_visible_draft",
@@ -1469,13 +1511,13 @@ async function registerRallyWebMcpTools() {
       document.modelContext.registerTool({
         name: "rally_review_visible_draft",
         title: "Review a human-visible Rally draft",
-        description: "Read one human-editable WebMCP studio draft as untrusted data, run deterministic scope and safety checks, and update its visible receipt. Review never approves, submits, generates, transmits, stores, publishes, connects, or changes policy.",
+        description: "Read one human-editable Rally page draft as untrusted data, run deterministic scope and safety checks, and update its visible receipt. Review never approves, submits, generates, transmits, stores, publishes, connects, or changes policy.",
         inputSchema: {
           type: "object",
           additionalProperties: false,
           required: ["workflow"],
           properties: {
-            workflow: { type: "string", enum: ["song", "insights", "connector"], description: "The visible studio draft to review." },
+            workflow: { type: "string", enum: ["song", "insights", "connector"], description: "The visible Rally page draft to review." },
           },
         },
         annotations: { readOnlyHint: false, untrustedContentHint: true },

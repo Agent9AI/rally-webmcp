@@ -39,11 +39,12 @@ evaluations pass:
 
 ## Customer control plane activation
 
-Company-email sign-in requires pre-created Secret Manager secrets named
-`rally-resend-api-key` and `rally-magic-link-signing-key`. The latter must be a
-cryptographically random value of at least 32 bytes. Grant only the
+Company-email sign-in and hosted run authority require pre-created Secret
+Manager secrets named `rally-resend-api-key`, `rally-magic-link-signing-key`,
+and `rally-run-authority-signing-key`. Both signing values must be
+cryptographically random and at least 32 bytes. Grant only the
 `rally-control-plane` service account `roles/secretmanager.secretAccessor` on
-those two secrets. Terraform manages those narrow IAM memberships, reads the
+those three secrets. Terraform manages those narrow IAM memberships, reads the
 existing secret metadata, and mounts `latest`; it does not create a secret or
 place a payload in state. The sender
 defaults to `Rally <rally@updates.agent9.dev>` and must be verified in Resend.
@@ -58,6 +59,12 @@ oracle. Unknown deliveries are acknowledged without sending. The queued message
 contains no usable login token: the authenticated delivery worker derives one,
 keeps it pending until Resend accepts the message, then activates it in
 Firestore.
+
+The run-authority key signs deny-by-default, per-run connector grants returned
+to the authenticated Worker. Create its first enabled version before enabling
+the hosted control plane; otherwise Terraform and the control-plane revision
+fail closed. Never reuse either login-signing material or a provider credential
+as this key.
 
 Google requires Web OAuth client registration in Cloud Console. Create a Web
 application client named `Rally Web` and authorize the JavaScript origin

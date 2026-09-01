@@ -4,13 +4,17 @@ Rally exposes one MCP server to every worker: `rally-connectors`. The gateway is
 not a bag of credentials. It is a run-scoped policy boundary between a model and
 each customer system.
 
-All ten catalogued providers—Google Workspace, Slack, GitHub, Cloudflare
-Observability, n8n Cloud, Stripe, BigQuery, Atlassian, Salesforce, and
-Hyperagent—have deny-by-default gateway adapters. Catalogued does not mean
-connected or certified. A customer connection becomes usable only after these
-gates pass:
+Rally implements ten deny-by-default runtime adapters. The hosted admin catalog
+at `/admin/` exposes nine supported systems: Google Workspace, Slack, GitHub,
+Cloudflare Observability, n8n Cloud, Stripe, Atlassian, Salesforce, and
+HyperAgent. BigQuery is the tenth runtime adapter; it uses operator-owned Google
+Application Default Credentials (ADC), is configured separately, and is not a
+hosted catalog card. **Supported**, **catalogued**, and **adapter implemented**
+do not mean connected or certified. A customer connection becomes usable only
+after these gates pass:
 
-1. the user authenticates their own Google ADC or provider OAuth profile;
+1. the user supplies their own Google ADC, provider OAuth grant, or restricted
+   credential through the connector's documented path;
 2. bounded live MCP discovery answers from the pinned provider endpoint;
 3. the discovered tools match the connector's committed safe allowlist;
 4. one predetermined, harmless read-only canary succeeds and Rally stores only
@@ -30,13 +34,25 @@ future provider catalog growth automatically.
 
 ## Hosted activation
 
-The Google-authenticated admin at `/admin/` is the hosted connection front
-door. Cloudflare Observability, n8n Cloud, Stripe, Atlassian, and HyperAgent use
-OAuth Authorization Code with PKCE and an exact Rally callback. Their OAuth
-metadata and token endpoints are restricted to provider-owned hosts. GitHub has
-a guided fine-grained-token path. A provider whose Rally-owned app registration
-is incomplete stays disabled and says “Not available yet.” Its card does not
-send a nontechnical user to a provider console and call that a connection.
+The Google-authenticated admin at `/admin/` is the front door for the nine-card
+hosted catalog. Google Workspace, Slack, and Salesforce currently stay disabled
+and say “Not available yet” until their required Rally-owned or provider app
+registration is complete. GitHub has a guided fine-grained-token path.
+Cloudflare Observability, n8n Cloud, Stripe, Atlassian, and HyperAgent expose an
+implemented OAuth Authorization Code with PKCE and/or restricted-credential
+path only where the control plane declares activation available. OAuth metadata
+and token endpoints are restricted to provider-owned hosts. A visible
+**Connect** action means the activation path is enabled; it is not evidence that
+a customer account is connected or certified. No card sends a nontechnical user
+to a provider console and calls that a connection.
+
+Every dashboard commission receives a signed, deny-by-default hosted run
+authority bound to its run ID, requester UID, and workspace. The local runner
+freezes only the certified tool manifests in that record and reaches the hosted
+relay with an audience-bound runner identity. Retries must present the identical
+authority; added, removed, changed, expired, or noncanonical grants fail closed.
+Ruflo research may be combined with this connector snapshot, but it cannot read
+connector credentials or widen the certified tools.
 
 The registered production callback at `rally.agent9.dev` is handled by the
 Cloudflare Worker. Starting consent sets a ten-minute, per-flow `HttpOnly`,
@@ -231,11 +247,13 @@ Broad customer/financial reads, writes, refunds, reports, feedback submission,
 and money movement are not part of the minimal preset. Sandbox and live Stripe
 connections must be authorized and reviewed separately.
 
-### BigQuery
+### BigQuery (runtime only; not a hosted catalog card)
 
-BigQuery may use the local OS user's Application Default Credentials identity—no
-API key or Rally token file. A non-local commissioner profile must name its own
-ADC credential file; Rally refuses to fall back to the machine-wide identity.
+BigQuery is available through the CLI/runtime registry but is not one of the
+nine systems exposed by the hosted admin or hosted connector API. It may use the
+local OS user's Application Default Credentials identity—no API key or Rally
+token file. A non-local commissioner profile must name its own ADC credential
+file; Rally refuses to fall back to the machine-wide identity.
 
 ```bash
 gcloud auth application-default login
@@ -336,6 +354,10 @@ connection. Rally authorizes the user's Hyperagent MCP account; it never
 receives or brokers the user's ChatGPT entitlement through Hyperagent.
 
 ## Verify before a live run
+
+The CLI registry below covers all ten runtime adapters. The hosted admin/API
+covers the nine-card catalog named under **Hosted activation**; the BigQuery
+doctor check exercises its separate ADC runtime path.
 
 ```bash
 ./bin/rally connectors --profile person@company.com list

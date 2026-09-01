@@ -47,6 +47,7 @@ from hosted_connector_execution import (
     HostedConnectorExecutor,
     HostedExecutionError,
     HostedMcpCaller,
+    connector_policy_sha256,
     make_execution_receipt_store,
 )
 from hosted_connectors import (
@@ -70,6 +71,13 @@ from magic_links import (
     make_magic_link_mailer,
     make_magic_link_store,
 )
+from run_authority import (
+    CERTIFICATION_SCHEMA,
+    RunAuthorityError,
+    mint_run_authority,
+    verify_run_authority,
+)
+from runner_oidc import RunnerIdentityError, verify_runner_identity
 from teammate_store import (
     TeammateConflict,
     TeammateStore,
@@ -92,6 +100,10 @@ SUPPORTED_CONNECTORS = frozenset(
         "stripe",
     }
 )
+
+_RUN_AUTH_GENERATION = re.compile(r"^[a-f0-9]{32}$")
+_RUN_AUTH_SHA256 = re.compile(r"^[a-f0-9]{64}$")
+_RUN_AUTH_TOOL_NAME = re.compile(r"^[A-Za-z0-9_.:/-]{1,160}$")
 
 _MAX_AUTH_BODY_BYTES = 4 * 1024
 _BOUNDED_AUTH_PATHS = frozenset(
@@ -188,6 +200,7 @@ _magic_link_queue: MagicLinkDeliveryQueue | None = None
 _MAX_BROWSER_FORM_BYTES = 32 * 1024
 _MAX_CALLBACK_BODY_BYTES = 16 * 1024
 _MAX_INVOCATION_BODY_BYTES = 72 * 1024
+_MAX_INTERNAL_INVOCATION_BODY_BYTES = 768 * 1024
 _EMAIL_LOCAL_PART = re.compile(r"^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$")
 _EMAIL_DOMAIN_LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 _SIMPLE_EMAIL = re.compile(
@@ -429,6 +442,17 @@ async def require_user(
     return identity
 
 
+def require_runner_identity(
+    authorization: str | None = Header(default=None, alias="Authorization"),
+) -> dict[str, Any]:
+    """Accept only the audience-bound runner service account on internal calls."""
+
+    try:
+        return verify_runner_identity(authorization)
+    except RunnerIdentityError as exc:
+        raise _unauthorized(str(exc)) from None
+
+
 @app.middleware("http")
 async def response_security(request: Request, call_next):
     response = await call_next(request)
@@ -507,6 +531,35 @@ class HostedToolCallInput(BaseModel):
 
     tool_name: str = Field(min_length=1, max_length=160, pattern=r"^[A-Za-z0-9_.:/-]+$")
     arguments: dict[str, Any] = Field(default_factory=dict)
+
+
+class InternalHostedToolCallInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    authority: dict[str, Any]
+    run_id: str = Field(
+        min_length=5,
+        max_length=79,
+        pattern=r"^r-[0-9a-z-]{3,77}$",
+    )
+    call_id: str = Field(min_length=32, max_length=32, pattern=r"^[a-f0-9]{32}$")
+    tool_name: str = Field(min_length=1, max_length=160, pattern=r"^[A-Za-z0-9_.:/-]+$")
+    arguments: dict[str, Any] = Field(default_factory=dict)
+
+
+class RunAuthorityInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str = Field(
+        min_length=5,
+        max_length=79,
+        pattern=r"^r-[0-9a-z-]{3,77}$",
+    )
+    workspace_id: str = Field(
+        min_length=1,
+        max_length=96,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$",
+    )
 
 
 class TeammateCreateInput(BaseModel):
@@ -795,6 +848,32 @@ async def bounded_invocation_json(request: Request) -> HostedToolCallInput:
         raise HTTPException(status_code=422, detail="invalid invocation request") from None
 
 
+async def bounded_internal_invocation_json(request: Request) -> InternalHostedToolCallInput:
+    content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if content_type != "application/json":
+        raise HTTPException(status_code=415, detail="unsupported invocation request")
+    declared = request.headers.get("content-length")
+    if declared:
+        try:
+            declared_bytes = int(declared)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="invalid invocation request") from None
+        if declared_bytes < 0:
+            raise HTTPException(status_code=400, detail="invalid invocation request")
+        if declared_bytes > _MAX_INTERNAL_INVOCATION_BODY_BYTES:
+            raise HTTPException(status_code=413, detail="invocation request is too large")
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > _MAX_INTERNAL_INVOCATION_BODY_BYTES:
+            raise HTTPException(status_code=413, detail="invocation request is too large")
+    try:
+        payload = json.loads(body)
+        return InternalHostedToolCallInput.model_validate(payload)
+    except (UnicodeDecodeError, ValueError, ValidationError):
+        raise HTTPException(status_code=422, detail="invalid invocation request") from None
+
+
 async def bounded_callback_json(request: Request) -> OAuthCallbackInput:
     """Parse a public OAuth callback without letting the framework buffer it unbounded."""
 
@@ -830,6 +909,8 @@ def public_connection(record: ConnectionRecord) -> dict[str, object]:
         and bool(record.canary_tool)
         and bool(record.tool_schema_sha256)
         and bool(record.credential_generation)
+        and bool(record.authorization_generation)
+        and bool(record.certified_policy_sha256)
         and record.tool_count == len(record.certified_tools)
         and record.certified_manifest_sha256 == certified_manifest_sha256(record.certified_tools)
         and dict(record.certified_tools).get(record.canary_tool) == record.tool_schema_sha256
@@ -854,11 +935,78 @@ def public_connection(record: ConnectionRecord) -> dict[str, object]:
                 "canary_tool": record.canary_tool,
                 "tool_schema_sha256": record.tool_schema_sha256,
                 "tool_manifest_sha256": record.certified_manifest_sha256,
+                "policy_sha256": record.certified_policy_sha256,
                 "certified_at": record.verified_at,
             }
             if certified
             else None
         ),
+    }
+
+
+def run_authority_grant(record: ConnectionRecord) -> dict[str, object] | None:
+    """Project one fully certified vault record without credential material."""
+
+    if (
+        not isinstance(record.connector_id, str)
+        or record.connector_id not in SUPPORTED_CONNECTORS
+        or record.status != "ready"
+        or record.error_code is not None
+        or not isinstance(record.verified_at, str)
+        or not record.verified_at
+        or record.proof_version != CERTIFICATION_SCHEMA
+        or not isinstance(record.credential_generation, str)
+        or not _RUN_AUTH_GENERATION.fullmatch(record.credential_generation)
+        or not isinstance(record.authorization_generation, str)
+        or not _RUN_AUTH_GENERATION.fullmatch(record.authorization_generation)
+        or not isinstance(record.certified_manifest_sha256, str)
+        or not _RUN_AUTH_SHA256.fullmatch(record.certified_manifest_sha256)
+        or not isinstance(record.certified_policy_sha256, str)
+        or not _RUN_AUTH_SHA256.fullmatch(record.certified_policy_sha256)
+        or not isinstance(record.canary_tool, str)
+        or not _RUN_AUTH_TOOL_NAME.fullmatch(record.canary_tool)
+        or not isinstance(record.tool_schema_sha256, str)
+        or not _RUN_AUTH_SHA256.fullmatch(record.tool_schema_sha256)
+        or not isinstance(record.certified_tools, (list, tuple))
+        or not 1 <= len(record.certified_tools) <= 128
+        or not isinstance(record.tool_count, int)
+        or isinstance(record.tool_count, bool)
+        or record.tool_count != len(record.certified_tools)
+    ):
+        return None
+
+    tools: list[list[str]] = []
+    for entry in record.certified_tools:
+        if not isinstance(entry, (list, tuple)) or len(entry) != 2:
+            return None
+        tool_name, schema_sha256 = entry
+        if (
+            not isinstance(tool_name, str)
+            or not _RUN_AUTH_TOOL_NAME.fullmatch(tool_name)
+            or not isinstance(schema_sha256, str)
+            or not _RUN_AUTH_SHA256.fullmatch(schema_sha256)
+        ):
+            return None
+        tools.append([tool_name, schema_sha256])
+    tools.sort(key=lambda item: item[0])
+    if (
+        len({tool_name for tool_name, _ in tools}) != len(tools)
+        or dict(tools).get(record.canary_tool) != record.tool_schema_sha256
+    ):
+        return None
+    try:
+        calculated_manifest = certified_manifest_sha256(tools)
+    except CredentialVaultError:
+        return None
+    if not hmac.compare_digest(record.certified_manifest_sha256, calculated_manifest):
+        return None
+    return {
+        "connector_id": record.connector_id,
+        "authorization_generation": record.authorization_generation,
+        "proof_version": record.proof_version,
+        "certified_manifest_sha256": record.certified_manifest_sha256,
+        "certified_policy_sha256": record.certified_policy_sha256,
+        "certified_tools": tools,
     }
 
 
@@ -975,6 +1123,36 @@ def connector_catalog(
         "connectors": public_catalog(),
         "activation": ["authorize", "verify", "ready"],
     }
+
+
+@app.post("/v1/run-authorities")
+async def create_run_authority(
+    body: RunAuthorityInput,
+    user: Annotated[UserIdentity, Depends(require_user)],
+    vault: Annotated[ConnectorVault, Depends(get_vault)],
+) -> dict[str, object]:
+    """Mint an immutable, deny-by-default connector snapshot for one run."""
+
+    workspace_id = workspace_id_for(user)
+    if not hmac.compare_digest(body.workspace_id, workspace_id):
+        raise HTTPException(status_code=403, detail="workspace does not belong to this account")
+    try:
+        records = await vault.list(user.uid)
+        grants = [
+            grant
+            for record in records
+            if (grant := run_authority_grant(record)) is not None
+        ]
+        authority = mint_run_authority(
+            os.getenv("RALLY_RUN_AUTHORITY_SIGNING_SECRET", ""),
+            run_id=body.run_id,
+            uid=user.uid,
+            workspace_id=workspace_id,
+            grants=grants,
+        )
+    except (CredentialVaultError, RunAuthorityError) as exc:
+        raise HTTPException(status_code=503, detail="run authority is unavailable") from exc
+    return {"authority": authority}
 
 
 @app.post("/auth/google/callback", include_in_schema=False)
@@ -1474,6 +1652,10 @@ async def verify_connector(
                 proof_version=certification.proof_version,
                 certified_tools=certification.certified_tools,
                 certified_manifest_sha256=certification.certified_manifest_sha256,
+                certified_policy_sha256=connector_policy_sha256(
+                    connector_id,
+                    workflow_ids,
+                ),
             )
         if record is None:
             latest = await vault.get_connection(user.uid, connector_id)
@@ -1545,6 +1727,87 @@ async def invoke_connector_tool(
         "connector_id": connector_id,
         "tool_name": body.tool_name,
         "result": result.payload,
+        "receipt": result.receipt.public(),
+    }
+
+
+@app.post("/v1/internal/run-connectors/{connector_id}:invoke")
+async def invoke_run_connector_tool(
+    connector_id: str,
+    request: Request,
+    _: Annotated[dict[str, Any], Depends(require_runner_identity)],
+    vault: Annotated[ConnectorVault, Depends(get_vault)],
+    receipt_store: Annotated[ExecutionReceiptStore, Depends(get_execution_receipt_store)],
+    caller: Annotated[HostedMcpCaller, Depends(get_hosted_tool_caller)],
+) -> dict[str, object]:
+    """Relay one frozen, signed run grant; browser credentials are never accepted."""
+
+    connector_id = validated_connector(connector_id)
+    body = await bounded_internal_invocation_json(request)
+    try:
+        authority = verify_run_authority(
+            body.authority,
+            os.getenv("RALLY_RUN_AUTHORITY_SIGNING_SECRET", ""),
+            expected_run_id=body.run_id,
+        )
+    except RunAuthorityError as exc:
+        raise HTTPException(status_code=403, detail="run authority is invalid or expired") from exc
+    matching = [
+        grant
+        for grant in authority["grants"]
+        if grant.get("connector_id") == connector_id
+    ]
+    if len(matching) != 1:
+        raise HTTPException(status_code=403, detail="connector is not authorized for this run")
+    executor = HostedConnectorExecutor(vault, receipt_store, caller)
+    try:
+        result = await executor.execute(
+            uid=authority["uid"],
+            connector_id=connector_id,
+            tool_name=body.tool_name,
+            arguments=body.arguments,
+            authority_grant=matching[0],
+            execution_id=body.call_id,
+        )
+    except HostedExecutionError as exc:
+        if exc.code in {
+            "connection_not_found",
+            "connection_busy",
+            "connection_not_ready",
+            "credential_expired",
+            "reconnect_required",
+            "run_authority_stale",
+            "tool_schema_changed",
+        }:
+            status_code = 409
+        elif exc.code in {
+            "argument_invalid",
+            "argument_not_allowed",
+            "argument_required",
+            "arguments_invalid",
+            "arguments_too_large",
+            "execution_id_invalid",
+            "human_approval_required",
+            "policy_configuration_required",
+            "run_authority_invalid",
+            "safe_preset_unavailable",
+            "tool_invalid",
+            "tool_not_allowed",
+            "tool_not_certified",
+        }:
+            status_code = 422
+        elif exc.code in {"receipt_unavailable", "vault_unavailable"}:
+            status_code = 503
+        elif exc.code == "execution_timeout":
+            status_code = 504
+        else:
+            status_code = 502
+        detail: dict[str, object] = {"code": exc.code}
+        if exc.receipt is not None:
+            detail["receipt"] = exc.receipt.public()
+        raise HTTPException(status_code=status_code, detail=detail) from exc
+    return {
+        "payload": result.payload,
         "receipt": result.receipt.public(),
     }
 
@@ -1625,6 +1888,10 @@ async def store_connection(
                 proof_version=certification.proof_version,
                 certified_tools=certification.certified_tools,
                 certified_manifest_sha256=certification.certified_manifest_sha256,
+                certified_policy_sha256=connector_policy_sha256(
+                    connector_id,
+                    workflow_ids,
+                ),
             )
         if record is None:
             raise HTTPException(status_code=409, detail="connection_changed")

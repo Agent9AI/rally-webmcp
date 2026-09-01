@@ -73,11 +73,18 @@ class DurableIngressTests(unittest.TestCase):
 
     def test_initial_commission_metadata_is_durable_before_connector_setup(self):
         run_id = "r-20260831-atomic-create"
+        hosted_authority = {
+            "run_id": run_id,
+            "uid": "google:owner-1",
+            "workspace_id": "workspace-one",
+        }
         observed = {}
 
-        def prepare(_run_id, run_dir, _cfg, _subject):
+        def prepare(_run_id, run_dir, _cfg, _subject, *, hosted_authority=None):
             with open(os.path.join(run_dir, "state.json")) as handle:
                 observed.update(json.load(handle))
+            self.assertEqual(_subject, "hosted:google:owner-1")
+            self.assertEqual(hosted_authority, observed["hosted_run_authority"])
             return {}
 
         with mock.patch.object(runner.connectors, "prepare_run", side_effect=prepare):
@@ -91,6 +98,8 @@ class DurableIngressTests(unittest.TestCase):
                 commission_message_id="<mail-1@example>",
                 commission_request_key="queue-1",
                 workspace_id="workspace-one",
+                requester_user_id="google:owner-1",
+                hosted_run_authority=hosted_authority,
             )
 
         self.assertEqual(observed["run_id"], run_id)
@@ -98,6 +107,41 @@ class DurableIngressTests(unittest.TestCase):
         self.assertEqual(observed["commission_message_id"], "<mail-1@example>")
         self.assertEqual(observed["commissioned_by"], "owner@example.com")
         self.assertEqual(observed["workspace_id"], "workspace-one")
+        self.assertEqual(observed["requester_user_id"], "google:owner-1")
+        self.assertEqual(observed["hosted_run_authority"], hosted_authority)
+
+    def test_hosted_authority_must_bind_run_requester_and_workspace(self):
+        run_id = "r-20260831-bound-authority"
+        authority = {
+            "run_id": run_id,
+            "uid": "google:owner-1",
+            "workspace_id": "workspace-one",
+        }
+        invalid = (
+            {"requester_user_id": "google:owner-1"},
+            {"hosted_run_authority": authority},
+            {
+                "requester_user_id": "google:owner-2",
+                "hosted_run_authority": authority,
+            },
+            {
+                "requester_user_id": "google:owner-1",
+                "hosted_run_authority": {**authority, "run_id": "r-20260831-other"},
+            },
+            {
+                "requester_user_id": "google:owner-1",
+                "hosted_run_authority": {
+                    **authority, "workspace_id": "workspace-two",
+                },
+            },
+        )
+        for extra in invalid:
+            with self.subTest(extra=extra), self.assertRaisesRegex(
+                    ValueError, "hosted run authority"):
+                runner.Run.create(
+                    "ship it", ".", runtime_config(), run_id=run_id,
+                    workspace_id="workspace-one", **extra,
+                )
 
     def test_report_prompt_uses_latest_recheck_not_stale_evidence_prefix(self):
         stale = "Verified at first checkpoint: 834 words. " + ("old " * 180)
@@ -246,6 +290,70 @@ class DurableIngressTests(unittest.TestCase):
         prepare.assert_called_once()
         self.assertEqual(prepare.call_args.kwargs["mode"], "ruflo")
 
+    def test_hosted_ruflo_commission_combines_both_run_authorities(self):
+        cfg = runtime_config()
+        cfg["research"] = {
+            "enabled": True,
+            "disabled_global_server_names": ["figma"],
+        }
+        run_id = "r-20260831-hosted-ruflo"
+        hosted_authority = {
+            "run_id": run_id,
+            "uid": "google:owner-1",
+            "workspace_id": "workspace-one",
+        }
+        connector_authority = {
+            "mode": "hosted",
+            "mcp_config_path": "/private/run/connector-mcp.json",
+        }
+        research_authority = {
+            "mode": "ruflo",
+            "mcp_config_path": "/private/run/research/mcp-config.json",
+            "allowed_tools": list(runner.research.REVIEWED_ALLOWED_TOOLS),
+        }
+        workspace = os.path.join(self.runs, run_id, "workspace")
+        with mock.patch.object(
+                    runner.connectors, "prepare_run", return_value=connector_authority
+                ) as prepare_connector, \
+                mock.patch.object(runner, "new_workspace", return_value=workspace), \
+                mock.patch.object(
+                    runner.research, "prepare_run", return_value=research_authority
+                ) as prepare_research, \
+                mock.patch.object(runner, "attach_cloud_coordination", return_value=True), \
+                mock.patch.object(runner, "sync_console", return_value=True), \
+                mock.patch.object(runner, "loop", return_value="complete"), \
+                mock.patch.object(runner, "write_report", return_value="verified"), \
+                mock.patch.object(runner, "mail_report"):
+            accepted = runner.handle_commission(
+                cfg,
+                "Deeply investigate it",
+                "owner@example.com",
+                request_key=run_id,
+                run_id=run_id,
+                workspace_id="workspace-one",
+                requester_user_id="google:owner-1",
+                hosted_run_authority=hosted_authority,
+                research_mode="ruflo",
+            )
+
+        self.assertEqual(accepted, run_id)
+        prepare_connector.assert_called_once_with(
+            run_id,
+            os.path.join(self.runs, run_id),
+            cfg,
+            "hosted:google:owner-1",
+            hosted_authority=hosted_authority,
+        )
+        self.assertEqual(
+            prepare_research.call_args.kwargs["connector_mcp_path"],
+            connector_authority["mcp_config_path"],
+        )
+        saved = runner.Run.load(run_id).s
+        self.assertEqual(saved["requester_user_id"], "google:owner-1")
+        self.assertEqual(saved["hosted_run_authority"], hosted_authority)
+        self.assertEqual(saved["connector_authority"], connector_authority)
+        self.assertEqual(saved["research_authority"], research_authority)
+
     def test_ruflo_safety_failure_is_terminal_and_never_downgrades(self):
         cfg = runtime_config()
         cfg["research"] = {"enabled": True}
@@ -286,6 +394,143 @@ class DurableIngressTests(unittest.TestCase):
                 request_key="queue-ruflo", research_mode="standard",
             )
 
+    def test_durable_replay_rejects_hosted_authority_presence_changes(self):
+        cfg = runtime_config()
+        hosted_run_id = "r-20260831-hosted-replay"
+        hosted_authority = {
+            "run_id": hosted_run_id,
+            "uid": "google:owner-1",
+            "workspace_id": "workspace-one",
+        }
+        with mock.patch.object(runner.connectors, "prepare_run", return_value={}):
+            runner.Run.create(
+                "ship it",
+                ".",
+                cfg,
+                run_id=hosted_run_id,
+                connector_subject="hosted:google:owner-1",
+                commissioned_by="owner@example.com",
+                commission_request_key="queue-hosted",
+                workspace_id="workspace-one",
+                requester_user_id="google:owner-1",
+                hosted_run_authority=hosted_authority,
+            )
+        with self.assertRaisesRegex(RuntimeError, "commission authority"):
+            runner.handle_commission(
+                cfg,
+                "ship it",
+                "owner@example.com",
+                request_key="queue-hosted",
+                workspace_id="workspace-one",
+            )
+
+        local_run_id = "r-20260831-local-replay"
+        with mock.patch.object(runner.connectors, "prepare_run", return_value={}):
+            runner.Run.create(
+                "ship it",
+                ".",
+                cfg,
+                run_id=local_run_id,
+                commissioned_by="owner@example.com",
+                commission_request_key="queue-local",
+                workspace_id="workspace-one",
+            )
+        added_authority = {
+            **hosted_authority,
+            "run_id": local_run_id,
+        }
+        with self.assertRaisesRegex(RuntimeError, "commission authority"):
+            runner.handle_commission(
+                cfg,
+                "ship it",
+                "owner@example.com",
+                request_key="queue-local",
+                workspace_id="workspace-one",
+                requester_user_id="google:owner-1",
+                hosted_run_authority=added_authority,
+            )
+
+    def test_hosted_ruflo_note_retry_uses_durable_connector_principal(self):
+        cfg = runtime_config()
+        cfg["research"] = {"enabled": True}
+        run_id = "r-20260831-hosted-ruflo-retry"
+        hosted_authority = {
+            "run_id": run_id,
+            "uid": "google:owner-1",
+            "workspace_id": "workspace-one",
+        }
+        with mock.patch.object(runner.connectors, "prepare_run", return_value={}):
+            run = runner.Run.create(
+                "Deeply investigate it",
+                ".",
+                cfg,
+                run_id=run_id,
+                connector_subject="hosted:google:owner-1",
+                commissioned_by="owner@example.com",
+                commission_request_key=run_id,
+                workspace_id="workspace-one",
+                requester_user_id="google:owner-1",
+                hosted_run_authority=hosted_authority,
+                research_mode="ruflo",
+            )
+        run.s["research_failure"] = {
+            "mode": "ruflo", "status": "rejected", "detail": "version mismatch",
+        }
+        run.s["halt"] = {
+            "reason": "research_unavailable", "detail": "version mismatch",
+        }
+        run.save()
+
+        workspace = os.path.join(self.runs, run_id, "workspace")
+        connector_authority = {
+            "mode": "hosted",
+            "mcp_config_path": "/private/run/connector-mcp.json",
+        }
+        research_authority = {
+            "mode": "ruflo",
+            "mcp_config_path": "/private/run/research/mcp-config.json",
+            "allowed_tools": list(runner.research.REVIEWED_ALLOWED_TOOLS),
+        }
+        with mock.patch.object(runner, "new_workspace", return_value=workspace), \
+                mock.patch.object(
+                    runner.connectors, "assert_worker_isolation"
+                ) as assert_isolation, \
+                mock.patch.object(
+                    runner.connectors, "prepare_run", return_value=connector_authority
+                ) as prepare_connector, \
+                mock.patch.object(
+                    runner.research, "prepare_run", return_value=research_authority
+                ) as prepare_research, \
+                mock.patch.object(runner, "prepare_media", return_value=None), \
+                mock.patch.object(runner, "loop", return_value="complete"), \
+                mock.patch.object(runner, "write_report", return_value="verified"), \
+                mock.patch.object(runner, "sync_console", return_value=True), \
+                mock.patch.object(runner, "mail_report"):
+            runner.handle_note(
+                cfg,
+                run_id,
+                "Retry the safety check and continue.",
+                sender="owner@example.com",
+                request_key="queue-retry",
+            )
+
+        assert_isolation.assert_called_once_with(cfg, "hosted:google:owner-1")
+        prepare_connector.assert_called_once_with(
+            run_id,
+            os.path.join(self.runs, run_id),
+            cfg,
+            "hosted:google:owner-1",
+            hosted_authority=hosted_authority,
+        )
+        self.assertEqual(
+            prepare_research.call_args.kwargs["connector_mcp_path"],
+            connector_authority["mcp_config_path"],
+        )
+        saved = runner.Run.load(run_id).s
+        self.assertNotIn("research_failure", saved)
+        self.assertEqual(saved["connector_authority"], connector_authority)
+        self.assertEqual(saved["research_authority"], research_authority)
+
     def test_serve_passes_dashboard_metadata_without_changing_queue_ack_id(self):
         cfg = {
             "ingress": {
@@ -296,6 +541,11 @@ class DurableIngressTests(unittest.TestCase):
         }
         queue_id = "00000000-0000-4000-8000-000000000001"
         run_id = "r-20260831-123e4567-e89b-42d3-a456-426614174000"
+        hosted_authority = {
+            "run_id": run_id,
+            "uid": "google:owner-1",
+            "workspace_id": "workspace-one",
+        }
         message = {
             "id": queue_id,
             "kind": "commission",
@@ -307,6 +557,9 @@ class DurableIngressTests(unittest.TestCase):
                 "source_run_id": "r-20260830-source",
                 "second_wind": False,
                 "workspace_id": "workspace-one",
+                "requester_user_id": "google:owner-1",
+                "hosted_run_authority": hosted_authority,
+                "research_mode": "ruflo",
             },
         }
         with mock.patch("ingress.collect", return_value=[message]), \
@@ -324,7 +577,9 @@ class DurableIngressTests(unittest.TestCase):
             source_run_id="r-20260830-source",
             second_wind=False,
             workspace_id="workspace-one",
-            research_mode="standard",
+            requester_user_id="google:owner-1",
+            hosted_run_authority=hosted_authority,
+            research_mode="ruflo",
         )
         ack.assert_called_once_with(cfg, [queue_id])
 

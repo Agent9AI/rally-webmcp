@@ -24,13 +24,20 @@ from hosted_connector_execution import (
     HostedMcpCaller,
     HostedOAuthRefresher,
     MemoryExecutionReceiptStore,
+    connector_policy_sha256,
 )
 from hosted_connectors import HostedConnectorError, connector, make_oauth_material, pack_secret
 from hosted_mcp_transport import MAX_HOSTED_MCP_RESPONSE_BYTES, CappedAsyncTransport
 from user_auth import UserIdentity
 
 
-def certification(tool_name="get_me", schema_sha256="a" * 64):
+def certification(
+    tool_name="get_me",
+    schema_sha256="a" * 64,
+    *,
+    connector_id="github",
+    workflow_ids=(),
+):
     manifest = ((tool_name, schema_sha256),)
     return {
         "status": "ready",
@@ -40,6 +47,7 @@ def certification(tool_name="get_me", schema_sha256="a" * 64):
         "proof_version": "rally.connection-certification/v1",
         "certified_tools": manifest,
         "certified_manifest_sha256": certified_manifest_sha256(manifest),
+        "certified_policy_sha256": connector_policy_sha256(connector_id, workflow_ids),
     }
 
 
@@ -170,7 +178,15 @@ async def ready_connection(
         canary = "get_workflow_details"
     elif connector_id == "stripe":
         canary = "get_stripe_account_info"
-    await vault.mark(uid, connector_id, **certification(canary))
+    await vault.mark(
+        uid,
+        connector_id,
+        **certification(
+            canary,
+            connector_id=connector_id,
+            workflow_ids=workflow_ids,
+        ),
+    )
 
 
 def final_receipt(receipts, uid):
@@ -192,6 +208,7 @@ async def test_exact_tenant_secret_drives_only_allowlisted_read_and_receipt_is_c
         connector_id="github",
         tool_name="get_me",
         arguments={},
+        execution_id="1" * 32,
     )
 
     assert caller.calls == [
@@ -210,6 +227,7 @@ async def test_exact_tenant_secret_drives_only_allowlisted_read_and_receipt_is_c
     ]
     assert completed.payload == caller.payload
     receipt = final_receipt(receipts, "tenant-one")
+    assert receipt["execution_id"] == "1" * 32
     assert receipt["decision"] == "allowed"
     assert receipt["argument_bytes"] == 2
     assert len(receipt["arguments_sha256"]) == 64
@@ -541,7 +559,11 @@ async def test_expired_oauth_refresh_rotates_sealed_material_before_provider_cal
         "stripe",
         ConnectorSecret(material, "oauth_refresh_token"),
     )
-    await vault.mark("tenant-one", "stripe", **certification("get_stripe_account_info"))
+    await vault.mark(
+        "tenant-one",
+        "stripe",
+        **certification("get_stripe_account_info", connector_id="stripe"),
+    )
     original_generation = (await vault.list("tenant-one"))[0].credential_generation
 
     refreshed = json.loads(material)
@@ -602,7 +624,11 @@ async def test_refresh_failure_retains_prior_sealed_material_and_never_calls_pro
     )
     original = ConnectorSecret(material, "oauth_refresh_token")
     await vault.put("tenant-one", "stripe", original)
-    await vault.mark("tenant-one", "stripe", **certification("get_stripe_account_info"))
+    await vault.mark(
+        "tenant-one",
+        "stripe",
+        **certification("get_stripe_account_info", connector_id="stripe"),
+    )
     refresher = FakeRefresher(error="credential_refresh_failed")
 
     with pytest.raises(HostedExecutionError) as failed:
@@ -657,7 +683,11 @@ async def test_authenticated_401_refreshes_once_rotates_then_retries_same_read()
         "stripe",
         ConnectorSecret(material, "oauth_refresh_token"),
     )
-    await vault.mark("tenant-one", "stripe", **certification("get_stripe_account_info"))
+    await vault.mark(
+        "tenant-one",
+        "stripe",
+        **certification("get_stripe_account_info", connector_id="stripe"),
+    )
     refreshed = json.loads(material)
     refreshed.update(
         {
@@ -731,7 +761,11 @@ async def test_oauth_401_retries_only_once_then_clears_certification():
         "stripe",
         ConnectorSecret(material, "oauth_refresh_token"),
     )
-    await vault.mark("tenant-one", "stripe", **certification("get_stripe_account_info"))
+    await vault.mark(
+        "tenant-one",
+        "stripe",
+        **certification("get_stripe_account_info", connector_id="stripe"),
+    )
     refreshed = json.loads(material)
     refreshed.update(
         {

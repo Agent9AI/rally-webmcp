@@ -6,6 +6,7 @@ the verified sender address, never from anything the body asks for.
 """
 from __future__ import annotations
 
+import datetime as dt
 import json
 import re
 import sys
@@ -42,6 +43,8 @@ TIMESTAMP = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$"
 )
 SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
+GENERATION_HEX = re.compile(r"^[0-9a-f]{32}$")
+TOOL_NAME = re.compile(r"^[A-Za-z0-9_.:/-]{1,160}$")
 MAX_EMAIL_BODY_CHARS = 6000
 MAX_EMAIL_TASK_CHARS = 6000
 MAX_RAW_HEADER_BYTES = 64 * 1024
@@ -702,17 +705,91 @@ def valid_email(value) -> Optional[str]:
     return email
 
 
+def _dashboard_authority(
+        value: object, *, run_id: str, user_id: str, workspace_id: str) -> Optional[Dict]:
+    """Validate, but do not claim to cryptographically verify, a signed snapshot."""
+    if not isinstance(value, dict) or set(value) != {
+        "schema", "run_id", "uid", "workspace_id", "issued_at", "expires_at",
+        "default_decision", "grants", "signature",
+    }:
+        return None
+    if (value.get("schema") != "rally.hosted-run-authority/v1"
+            or value.get("run_id") != run_id
+            or value.get("uid") != user_id
+            or value.get("workspace_id") != workspace_id
+            or value.get("default_decision") != "deny"
+            or not isinstance(value.get("signature"), str)
+            or not SHA256_HEX.fullmatch(value["signature"])):
+        return None
+    issued_at = value.get("issued_at")
+    expires_at = value.get("expires_at")
+    if (not isinstance(issued_at, str) or not TIMESTAMP.fullmatch(issued_at)
+            or not isinstance(expires_at, str) or not TIMESTAMP.fullmatch(expires_at)):
+        return None
+    try:
+        issued = dt.datetime.fromisoformat(issued_at.replace("Z", "+00:00"))
+        expires = dt.datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    now = dt.datetime.now(dt.timezone.utc)
+    if issued > now + dt.timedelta(seconds=60) or expires <= now \
+            or expires <= issued or expires - issued > dt.timedelta(days=35):
+        return None
+    grants = value.get("grants")
+    if not isinstance(grants, list) or len(grants) > 32:
+        return None
+    connector_ids = set()
+    for grant in grants:
+        if not isinstance(grant, dict) or set(grant) != {
+            "connector_id", "authorization_generation", "proof_version",
+            "certified_manifest_sha256", "certified_policy_sha256", "certified_tools",
+        }:
+            return None
+        connector_id = grant.get("connector_id")
+        tools = grant.get("certified_tools")
+        if (not isinstance(connector_id, str)
+                or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", connector_id)
+                or connector_id in connector_ids
+                or not isinstance(grant.get("authorization_generation"), str)
+                or not GENERATION_HEX.fullmatch(grant["authorization_generation"])
+                or grant.get("proof_version") != "rally.connection-certification/v1"
+                or not isinstance(grant.get("certified_manifest_sha256"), str)
+                or not SHA256_HEX.fullmatch(grant["certified_manifest_sha256"])
+                or not isinstance(grant.get("certified_policy_sha256"), str)
+                or not SHA256_HEX.fullmatch(grant["certified_policy_sha256"])
+                or not isinstance(tools, list) or not tools or len(tools) > 128):
+            return None
+        connector_ids.add(connector_id)
+        tool_names = set()
+        previous = None
+        for tool in tools:
+            if (not isinstance(tool, list) or len(tool) != 2
+                    or not isinstance(tool[0], str) or not TOOL_NAME.fullmatch(tool[0])
+                    or not isinstance(tool[1], str) or not SHA256_HEX.fullmatch(tool[1])
+                    or tool[0] in tool_names
+                    or (previous is not None and tool[0] <= previous)):
+                return None
+            tool_names.add(tool[0])
+            previous = tool[0]
+    if [grant["connector_id"] for grant in grants] != sorted(connector_ids):
+        return None
+    return value
+
+
 def classify_dashboard(payload: Dict) -> Tuple[str, Dict]:
     """Validate one server-authored dashboard envelope as a commission only."""
     invalid = ("ignored", {"why": "invalid dashboard commission envelope"})
     if not isinstance(payload, dict) or set(payload) != {
         "source", "schema_version", "run_id", "accepted_at",
-        "request_fingerprint", "job", "authority",
+        "request_fingerprint", "job", "requester", "authority",
     }:
         return invalid
+    # Envelope v1 carried only a requester identity, not signed connector
+    # grants. Accepting it here would silently weaken hosted authority, so the
+    # transition is deliberately fail-closed instead of dual-read.
     if (payload.get("source") != "dashboard"
             or type(payload.get("schema_version")) is not int
-            or payload.get("schema_version") != 1):
+            or payload.get("schema_version") != 2):
         return invalid
     run_id = payload.get("run_id")
     accepted_at = payload.get("accepted_at")
@@ -723,14 +800,14 @@ def classify_dashboard(payload: Dict) -> Tuple[str, Dict]:
         return invalid
 
     job = payload.get("job")
-    authority = payload.get("authority")
+    requester = payload.get("requester")
     legacy_job_keys = {"title", "goal", "source_run_id", "second_wind"}
     if (
         not isinstance(job, dict)
         or set(job) not in (legacy_job_keys, legacy_job_keys | {"research_mode"})
     ):
         return invalid
-    if not isinstance(authority, dict) or set(authority) != {
+    if not isinstance(requester, dict) or set(requester) != {
         "user_id", "email", "workspace_id",
     }:
         return invalid
@@ -756,12 +833,20 @@ def classify_dashboard(payload: Dict) -> Tuple[str, Dict]:
             or not isinstance(research_mode, str)
             or research_mode not in {"standard", "ruflo"}):
         return invalid
-    user_id = authority.get("user_id")
-    workspace_id = authority.get("workspace_id")
-    sender = valid_email(authority.get("email"))
+    user_id = requester.get("user_id")
+    workspace_id = requester.get("workspace_id")
+    sender = valid_email(requester.get("email"))
     if (not isinstance(user_id, str) or not USER_ID.fullmatch(user_id)
             or not isinstance(workspace_id, str) or not WORKSPACE_ID.fullmatch(workspace_id)
             or sender is None):
+        return invalid
+    authority = _dashboard_authority(
+        payload.get("authority"),
+        run_id=run_id,
+        user_id=user_id,
+        workspace_id=workspace_id,
+    )
+    if authority is None:
         return invalid
 
     task = "%s\n\nGoal:\n%s" % (title, goal)
@@ -778,6 +863,8 @@ def classify_dashboard(payload: Dict) -> Tuple[str, Dict]:
         "second_wind": second_wind,
         "research_mode": research_mode,
         "workspace_id": workspace_id,
+        "requester_user_id": user_id,
+        "hosted_run_authority": authority,
     }
 
 

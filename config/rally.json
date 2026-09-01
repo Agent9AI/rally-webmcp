@@ -49,7 +49,12 @@
     "registry": "config/connectors.json",
     "local": "config/connectors.local.json",
     "enabled": [],
-    "overrides": {}
+    "overrides": {},
+    "hosted_gateway": {
+      "url": "https://rally-control-plane-1000134647783.us-east1.run.app",
+      "audience": "https://rally-control-plane-1000134647783.us-east1.run.app",
+      "identity_service_account": "rally-local-invoker@rally-agent9-2026.iam.gserviceaccount.com"
+    }
   },
   "research": {
     "enabled": true,

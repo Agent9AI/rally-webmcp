@@ -25,6 +25,37 @@ def config(local_path, enabled=None, overrides=None, registry=None):
     }
 
 
+def hosted_config(local_path):
+    value = config(local_path)
+    value["connectors"]["hosted_gateway"] = {
+        "url": "https://control-plane.example",
+        "audience": "https://control-plane.example",
+        "identity_service_account": "runner@example.iam.gserviceaccount.com",
+    }
+    return value
+
+
+def hosted_authority(run_id="r-test"):
+    return {
+        "schema": "rally.hosted-run-authority/v1",
+        "run_id": run_id,
+        "uid": "google-user-one",
+        "workspace_id": "user:google-user-one",
+        "issued_at": "2026-08-31T12:00:00Z",
+        "expires_at": "2026-09-30T12:00:00Z",
+        "default_decision": "deny",
+        "grants": [{
+            "connector_id": "github",
+            "authorization_generation": "b" * 32,
+            "proof_version": "rally.connection-certification/v1",
+            "certified_manifest_sha256": "c" * 64,
+            "certified_policy_sha256": "d" * 64,
+            "certified_tools": [["get_me", "a" * 64]],
+        }],
+        "signature": "e" * 64,
+    }
+
+
 class TestConnectorAuthority(unittest.TestCase):
     def test_catalog_has_ten_honest_gateway_adapters(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -254,6 +285,7 @@ class TestConnectorAuthority(unittest.TestCase):
             summary = C.prepare_run(
                 "r-test", directory, config(os.path.join(directory, "local.json"))
             )
+            self.assertEqual(summary["mode"], "local")
             for key in ("policy_path", "mcp_config_path"):
                 mode = stat.S_IMODE(os.stat(summary[key]).st_mode)
                 self.assertEqual(mode, 0o600)
@@ -289,6 +321,52 @@ class TestConnectorAuthority(unittest.TestCase):
             with mock.patch.object(C.subprocess, "run", return_value=exposed):
                 with self.assertRaises(C.ConnectorConfigError):
                     C.assert_worker_isolation(enabled_cfg)
+
+    def test_hosted_run_freezes_signed_grants_into_secret_free_relay_policy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            authority = hosted_authority()
+            summary = C.prepare_run(
+                "r-test",
+                directory,
+                hosted_config(os.path.join(directory, "local.json")),
+                subject="owner@example.com",
+                hosted_authority=authority,
+            )
+            self.assertEqual(summary["mode"], "hosted")
+            self.assertEqual(summary["enabled"], [{
+                "id": "github",
+                "name": "GitHub",
+                "allowed_tools": ["get_me"],
+                "gated_tools": [],
+            }])
+            self.assertEqual(stat.S_IMODE(os.stat(summary["policy_path"]).st_mode), 0o600)
+            with open(summary["policy_path"]) as handle:
+                frozen = json.load(handle)
+            self.assertEqual(frozen["schema_version"],
+                             "rally.hosted-connector-authority/v1")
+            self.assertEqual(frozen["hosted_run_authority"], authority)
+            self.assertEqual(frozen["relay"], {
+                "url": "https://control-plane.example",
+                "audience": "https://control-plane.example",
+                "identity_service_account": "runner@example.iam.gserviceaccount.com",
+            })
+            self.assertNotIn("owner@example.com", json.dumps(frozen))
+            self.assertNotIn("authorization", C.prompt_text(summary).casefold())
+
+    def test_hosted_gateway_configuration_fails_closed_on_origin_drift(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cfg = hosted_config(os.path.join(directory, "local.json"))
+            cfg["connectors"]["hosted_gateway"]["audience"] = (
+                "https://different.example"
+            )
+            with self.assertRaisesRegex(C.ConnectorConfigError,
+                                        "hosted connector gateway is invalid"):
+                C.prepare_run(
+                    "r-test",
+                    directory,
+                    cfg,
+                    hosted_authority=hosted_authority(),
+                )
 
     def test_connection_policy_and_oauth_storage_are_isolated_per_user(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -1,5 +1,8 @@
 import asyncio
 import datetime as dt
+import hashlib
+import json
+from dataclasses import replace
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 import httpx
@@ -14,8 +17,16 @@ from credential_vault import (
     MemoryConnectorVault,
     certified_manifest_sha256,
 )
-from hosted_connectors import ConnectionCertification, make_oauth_material
+from hosted_connector_execution import (
+    HostedCallResult,
+    MemoryExecutionReceiptStore,
+    connector_policy_sha256,
+)
+from hosted_connectors import ConnectionCertification, make_oauth_material, pack_secret
+from run_authority import CERTIFICATION_SCHEMA, mint_run_authority, verify_run_authority
 from user_auth import UserIdentity
+
+RUN_AUTHORITY_SECRET = "test-run-authority-signing-secret-material"
 
 
 class PassingVerifier:
@@ -62,6 +73,15 @@ class PassingRevoker:
         return True
 
 
+class InternalCaller:
+    def __init__(self):
+        self.calls = []
+
+    async def call(self, **kwargs):
+        self.calls.append(kwargs)
+        return HostedCallResult(payload={"account": "tenant-one"}, is_error=False)
+
+
 @pytest.fixture
 def web_control_plane():
     vault = MemoryConnectorVault()
@@ -73,6 +93,361 @@ def web_control_plane():
     )
     yield httpx.ASGITransport(app=control_plane.app), vault
     control_plane.app.dependency_overrides.clear()
+
+
+async def certify_for_authority(vault, uid, connector_id, *, tool_name="safe_read"):
+    await vault.put(uid, connector_id, ConnectorSecret(f"private-{connector_id}", "bearer_token"))
+    tools = ((tool_name, hashlib.sha256(f"schema:{tool_name}".encode()).hexdigest()),)
+    return await vault.mark(
+        uid,
+        connector_id,
+        status="ready",
+        tool_count=1,
+        canary_tool=tool_name,
+        tool_schema_sha256=tools[0][1],
+        proof_version=CERTIFICATION_SCHEMA,
+        certified_tools=tools,
+        certified_manifest_sha256=certified_manifest_sha256(tools),
+        certified_policy_sha256=hashlib.sha256(
+            f"policy:{connector_id}".encode()
+        ).hexdigest(),
+    )
+
+
+@pytest.mark.asyncio
+async def test_run_authority_contains_only_callers_fully_certified_connections(
+    web_control_plane,
+    monkeypatch,
+):
+    transport, vault = web_control_plane
+    workspace_id = "ws_" + hashlib.sha256(b"google-user-one").hexdigest()
+    monkeypatch.setenv("RALLY_WORKSPACE_ID", workspace_id)
+    monkeypatch.setenv("RALLY_RUN_AUTHORITY_SIGNING_SECRET", RUN_AUTHORITY_SECRET)
+    github = await certify_for_authority(vault, "google-user-one", "github")
+    await vault.put(
+        "google-user-one",
+        "slack",
+        ConnectorSecret("private-unverified", "bearer_token"),
+    )
+    await certify_for_authority(vault, "google-user-two", "atlassian")
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://rally") as client:
+        response = await client.post(
+            "/v1/run-authorities",
+            json={"run_id": "r-20260831-hosted", "workspace_id": workspace_id},
+        )
+
+    assert response.status_code == 200
+    assert set(response.json()) == {"authority"}
+    authority = response.json()["authority"]
+    issued_at = dt.datetime.strptime(
+        authority["issued_at"], "%Y-%m-%dT%H:%M:%SZ"
+    ).replace(tzinfo=dt.UTC)
+    verified = verify_run_authority(
+        authority,
+        RUN_AUTHORITY_SECRET,
+        now=issued_at,
+        expected_run_id="r-20260831-hosted",
+        expected_uid="google-user-one",
+        expected_workspace_id=workspace_id,
+    )
+    assert verified == authority
+    assert authority["default_decision"] == "deny"
+    assert [grant["connector_id"] for grant in authority["grants"]] == ["github"]
+    assert authority["grants"][0] == {
+        "connector_id": "github",
+        "authorization_generation": github.authorization_generation,
+        "proof_version": CERTIFICATION_SCHEMA,
+        "certified_manifest_sha256": github.certified_manifest_sha256,
+        "certified_policy_sha256": github.certified_policy_sha256,
+        "certified_tools": [["safe_read", github.tool_schema_sha256]],
+    }
+    encoded = json.dumps(response.json())
+    assert "private-github" not in encoded
+    assert "private-unverified" not in encoded
+    assert "owner@example.com" not in encoded
+
+
+@pytest.mark.asyncio
+async def test_run_authority_requires_exact_workspace_and_request_schema(
+    web_control_plane,
+    monkeypatch,
+):
+    transport, _ = web_control_plane
+    workspace_id = "ws_" + hashlib.sha256(b"google-user-one").hexdigest()
+    monkeypatch.setenv("RALLY_WORKSPACE_ID", workspace_id)
+    monkeypatch.setenv("RALLY_RUN_AUTHORITY_SIGNING_SECRET", RUN_AUTHORITY_SECRET)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://rally") as client:
+        wrong_workspace = await client.post(
+            "/v1/run-authorities",
+            json={
+                "run_id": "r-20260831-hosted",
+                "workspace_id": "user:google-user-one",
+            },
+        )
+        invalid_run = await client.post(
+            "/v1/run-authorities",
+            json={"run_id": "../run", "workspace_id": workspace_id},
+        )
+        extra_identity = await client.post(
+            "/v1/run-authorities",
+            json={
+                "run_id": "r-20260831-hosted",
+                "workspace_id": workspace_id,
+                "uid": "google-user-two",
+            },
+        )
+
+    assert wrong_workspace.status_code == 403
+    assert wrong_workspace.json()["detail"] == "workspace does not belong to this account"
+    assert invalid_run.status_code == 422
+    assert invalid_run.json() == {"detail": "invalid request"}
+    assert extra_identity.status_code == 422
+    assert extra_identity.json() == {"detail": "invalid request"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("signing_secret", [None, "short"])
+async def test_run_authority_missing_or_short_signing_secret_fails_closed(
+    web_control_plane,
+    monkeypatch,
+    signing_secret,
+):
+    transport, _ = web_control_plane
+    monkeypatch.delenv("RALLY_WORKSPACE_ID", raising=False)
+    if signing_secret is None:
+        monkeypatch.delenv("RALLY_RUN_AUTHORITY_SIGNING_SECRET", raising=False)
+    else:
+        monkeypatch.setenv("RALLY_RUN_AUTHORITY_SIGNING_SECRET", signing_secret)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://rally") as client:
+        response = await client.post(
+            "/v1/run-authorities",
+            json={
+                "run_id": "r-20260831-hosted",
+                "workspace_id": "user:google-user-one",
+            },
+        )
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "run authority is unavailable"}
+
+
+@pytest.mark.asyncio
+async def test_run_authority_requires_authenticated_user(monkeypatch):
+    control_plane.app.dependency_overrides.clear()
+    monkeypatch.delenv("RALLY_GOOGLE_WEB_CLIENT_IDS", raising=False)
+    monkeypatch.setenv("RALLY_RUN_AUTHORITY_SIGNING_SECRET", RUN_AUTHORITY_SECRET)
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=control_plane.app),
+        base_url="http://rally",
+    ) as client:
+        response = await client.post(
+            "/v1/run-authorities",
+            json={
+                "run_id": "r-20260831-hosted",
+                "workspace_id": "user:google-user-one",
+            },
+        )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "authentication required"}
+
+
+@pytest.mark.asyncio
+async def test_internal_run_connector_requires_runner_and_exact_signed_grant(
+    web_control_plane,
+    monkeypatch,
+):
+    transport, vault = web_control_plane
+    receipts = MemoryExecutionReceiptStore()
+    caller = InternalCaller()
+    control_plane.app.dependency_overrides[control_plane.require_runner_identity] = lambda: {
+        "sub": "runner"
+    }
+    control_plane.app.dependency_overrides[
+        control_plane.get_execution_receipt_store
+    ] = lambda: receipts
+    control_plane.app.dependency_overrides[control_plane.get_hosted_tool_caller] = lambda: caller
+    monkeypatch.setenv("RALLY_RUN_AUTHORITY_SIGNING_SECRET", RUN_AUTHORITY_SECRET)
+    packed = pack_secret(
+        credential="tenant-one-private",
+        endpoint="https://api.githubcopilot.com/mcp",
+    )
+    await vault.put(
+        "google-user-one",
+        "github",
+        ConnectorSecret(packed, "bearer_token"),
+    )
+    tools = (("get_me", "a" * 64),)
+    record = await vault.mark(
+        "google-user-one",
+        "github",
+        status="ready",
+        tool_count=1,
+        canary_tool="get_me",
+        tool_schema_sha256="a" * 64,
+        proof_version=CERTIFICATION_SCHEMA,
+        certified_tools=tools,
+        certified_manifest_sha256=certified_manifest_sha256(tools),
+        certified_policy_sha256=connector_policy_sha256("github"),
+    )
+    authority = mint_run_authority(
+        RUN_AUTHORITY_SECRET,
+        run_id="r-20260831-internal",
+        uid="google-user-one",
+        workspace_id="user:google-user-one",
+        grants=[control_plane.run_authority_grant(record)],
+    )
+    body = {
+        "authority": authority,
+        "run_id": "r-20260831-internal",
+        "call_id": "1" * 32,
+        "tool_name": "get_me",
+        "arguments": {},
+    }
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://rally") as client:
+        invoked = await client.post(
+            "/v1/internal/run-connectors/github:invoke",
+            json=body,
+        )
+        tampered_body = json.loads(json.dumps(body))
+        tampered_body["authority"]["signature"] = "f" * 64
+        tampered = await client.post(
+            "/v1/internal/run-connectors/github:invoke",
+            json=tampered_body,
+        )
+
+    assert invoked.status_code == 200
+    assert set(invoked.json()) == {"payload", "receipt"}
+    assert invoked.json()["payload"] == {"account": "tenant-one"}
+    assert invoked.json()["receipt"]["execution_id"] == "1" * 32
+    assert invoked.json()["receipt"]["authorization_generation"] == (
+        record.authorization_generation
+    )
+    assert tampered.status_code == 403
+    assert tampered.json() == {"detail": "run authority is invalid or expired"}
+    assert len(caller.calls) == 1
+    assert "tenant-one-private" not in invoked.text
+
+
+@pytest.mark.asyncio
+async def test_internal_run_connector_rejects_browser_auth_and_revoked_snapshot(
+    web_control_plane,
+    monkeypatch,
+):
+    transport, vault = web_control_plane
+    monkeypatch.setenv("RALLY_RUN_AUTHORITY_SIGNING_SECRET", RUN_AUTHORITY_SECRET)
+    monkeypatch.setenv("RALLY_RUNNER_AUDIENCE", "https://control-plane.example")
+    monkeypatch.setenv(
+        "RALLY_RUNNER_SERVICE_ACCOUNT",
+        "runner@example.iam.gserviceaccount.com",
+    )
+    await vault.put(
+        "google-user-one",
+        "github",
+        ConnectorSecret(
+            pack_secret(
+                credential="tenant-one-private",
+                endpoint="https://api.githubcopilot.com/mcp",
+            ),
+            "bearer_token",
+        ),
+    )
+    tools = (("get_me", "a" * 64),)
+    record = await vault.mark(
+        "google-user-one",
+        "github",
+        status="ready",
+        tool_count=1,
+        canary_tool="get_me",
+        tool_schema_sha256="a" * 64,
+        proof_version=CERTIFICATION_SCHEMA,
+        certified_tools=tools,
+        certified_manifest_sha256=certified_manifest_sha256(tools),
+        certified_policy_sha256=connector_policy_sha256("github"),
+    )
+    authority = mint_run_authority(
+        RUN_AUTHORITY_SECRET,
+        run_id="r-20260831-revoked",
+        uid="google-user-one",
+        workspace_id="user:google-user-one",
+        grants=[control_plane.run_authority_grant(record)],
+    )
+    body = {
+        "authority": authority,
+        "run_id": "r-20260831-revoked",
+        "call_id": "2" * 32,
+        "tool_name": "get_me",
+        "arguments": {},
+    }
+    async with httpx.AsyncClient(transport=transport, base_url="http://rally") as client:
+        browser_only = await client.post(
+            "/v1/internal/run-connectors/github:invoke",
+            headers={"X-Rally-Session": "browser-session"},
+            json=body,
+        )
+    assert browser_only.status_code == 401
+
+    control_plane.app.dependency_overrides[control_plane.require_runner_identity] = lambda: {
+        "sub": "runner"
+    }
+    control_plane.app.dependency_overrides[
+        control_plane.get_execution_receipt_store
+    ] = lambda: MemoryExecutionReceiptStore()
+    control_plane.app.dependency_overrides[
+        control_plane.get_hosted_tool_caller
+    ] = lambda: InternalCaller()
+    await vault.begin_disconnect("google-user-one", "github")
+    async with httpx.AsyncClient(transport=transport, base_url="http://rally") as client:
+        revoked = await client.post(
+            "/v1/internal/run-connectors/github:invoke",
+            json=body,
+        )
+    assert revoked.status_code == 409
+    assert revoked.json()["detail"]["code"] == "connection_not_ready"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "invalid_fields",
+    [
+        {"authorization_generation": None},
+        {"certified_policy_sha256": None},
+        {"certified_manifest_sha256": "f" * 64},
+        {"proof_version": "rally.connection-certification/v0"},
+        {"verified_at": None},
+    ],
+)
+async def test_run_authority_skips_malformed_ready_records(
+    web_control_plane,
+    monkeypatch,
+    invalid_fields,
+):
+    transport, vault = web_control_plane
+    monkeypatch.delenv("RALLY_WORKSPACE_ID", raising=False)
+    monkeypatch.setenv("RALLY_RUN_AUTHORITY_SIGNING_SECRET", RUN_AUTHORITY_SECRET)
+    await certify_for_authority(vault, "google-user-one", "github")
+    secret, record = vault._items[("google-user-one", "github")]
+    vault._items[("google-user-one", "github")] = (
+        secret,
+        replace(record, **invalid_fields),
+    )
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://rally") as client:
+        response = await client.post(
+            "/v1/run-authorities",
+            json={
+                "run_id": "r-20260831-hosted",
+                "workspace_id": "user:google-user-one",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["authority"]["grants"] == []
 
 
 @pytest.mark.asyncio
@@ -161,6 +536,7 @@ async def test_oauth_revocation_failure_retains_encrypted_credential(
         proof_version="rally.connection-certification/v1",
         certified_tools=(("list_agents", "a" * 64),),
         certified_manifest_sha256=certified_manifest_sha256((("list_agents", "a" * 64),)),
+        certified_policy_sha256=connector_policy_sha256("hyperagent"),
     )
     monkeypatch.setattr(control_plane, "get_oauth_broker", lambda: FailingRevoker())
 

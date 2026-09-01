@@ -5,11 +5,14 @@ from __future__ import annotations
 import argparse
 import asyncio
 import hashlib
+import inspect
 import json
 import os
 import re
+import secrets
 import subprocess
 import time
+import urllib.parse
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -47,7 +50,13 @@ MAX_TOOL_SCHEMA_BYTES = 64 * 1024
 MAX_TOOL_DESCRIPTION_BYTES = 4 * 1024
 MAX_ARGUMENT_BYTES = 256 * 1024
 MAX_RESULT_BYTES = 1024 * 1024
+MAX_RELAY_REQUEST_BYTES = 768 * 1024
+MAX_RELAY_RESPONSE_BYTES = 1024 * 1024
+MAX_IDENTITY_TOKEN_BYTES = 24 * 1024
 TOOL_NAME = re.compile(r"^[A-Za-z0-9_.:/-]{1,160}$")
+CONNECTOR_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
+SERVICE_ACCOUNT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,126}@[A-Za-z0-9.-]{1,190}$")
+HOSTED_AUTHORITY_SCHEMA = "rally.hosted-connector-authority/v1"
 
 
 class KeychainTokenStorage(TokenStorage):
@@ -188,11 +197,145 @@ def load_authority(path: str | None = None) -> dict[str, Any]:
             authority = json.load(handle)
     except (OSError, ValueError) as exc:
         raise ConnectorGatewayError(f"cannot read connector authority: {exc}") from exc
-    if authority.get("schema_version") != "rally.connector-authority/v1":
+    if not isinstance(authority, dict):
+        raise ConnectorGatewayError("unsupported connector authority schema")
+    schema = authority.get("schema_version")
+    if schema not in {"rally.connector-authority/v1", HOSTED_AUTHORITY_SCHEMA}:
         raise ConnectorGatewayError("unsupported connector authority schema")
     if authority.get("default_decision") != "deny":
         raise ConnectorGatewayError("connector authority must default to deny")
+    if schema == HOSTED_AUTHORITY_SCHEMA:
+        _validate_hosted_authority(authority)
     return authority
+
+
+def _is_hosted_authority(authority: dict[str, Any]) -> bool:
+    return authority.get("schema_version") == HOSTED_AUTHORITY_SCHEMA
+
+
+def _validate_relay_url(value: Any, *, label: str) -> str:
+    if not isinstance(value, str) or not value or len(value) > 2048:
+        raise ConnectorGatewayError(f"hosted connector {label} is invalid")
+    try:
+        parsed = urllib.parse.urlsplit(value)
+    except ValueError as exc:
+        raise ConnectorGatewayError(f"hosted connector {label} is invalid") from exc
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path not in {"", "/"}
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ConnectorGatewayError(f"hosted connector {label} is invalid")
+    return value.rstrip("/")
+
+
+def _validate_hosted_authority(authority: dict[str, Any]) -> None:
+    run_id = authority.get("run_id")
+    if not isinstance(run_id, str) or not run_id or len(run_id) > 256:
+        raise ConnectorGatewayError("hosted connector authority has an invalid run ID")
+    relay = authority.get("relay")
+    if not isinstance(relay, dict) or set(relay) != {
+        "url",
+        "audience",
+        "identity_service_account",
+    }:
+        raise ConnectorGatewayError("hosted connector relay configuration is invalid")
+    relay_url = _validate_relay_url(relay.get("url"), label="relay URL")
+    audience = _validate_relay_url(relay.get("audience"), label="relay audience")
+    if relay_url != audience:
+        raise ConnectorGatewayError("hosted connector relay audience is invalid")
+    service_account = relay.get("identity_service_account")
+    if not isinstance(service_account, str) or not SERVICE_ACCOUNT.fullmatch(service_account):
+        raise ConnectorGatewayError("hosted connector relay identity is invalid")
+
+    signed = authority.get("hosted_run_authority")
+    if (
+        not isinstance(signed, dict)
+        or signed.get("schema") != "rally.hosted-run-authority/v1"
+        or signed.get("run_id") != run_id
+        or signed.get("default_decision") != "deny"
+        or not isinstance(signed.get("signature"), str)
+        or not re.fullmatch(r"[0-9a-f]{64}", signed["signature"])
+        or not isinstance(signed.get("grants"), list)
+    ):
+        raise ConnectorGatewayError("hosted run authority is invalid")
+    signed_grants: dict[str, set[str]] = {}
+    for grant in signed["grants"]:
+        if not isinstance(grant, dict) or not isinstance(grant.get("connector_id"), str):
+            raise ConnectorGatewayError("hosted run authority is invalid")
+        connector_id = grant["connector_id"]
+        certified_tools = grant.get("certified_tools")
+        if (
+            connector_id in signed_grants
+            or not CONNECTOR_ID.fullmatch(connector_id)
+            or not isinstance(certified_tools, list)
+        ):
+            raise ConnectorGatewayError("hosted run authority is invalid")
+        names: set[str] = set()
+        for tool in certified_tools:
+            if (
+                not isinstance(tool, list)
+                or len(tool) != 2
+                or not isinstance(tool[0], str)
+                or not TOOL_NAME.fullmatch(tool[0])
+                or not isinstance(tool[1], str)
+                or not re.fullmatch(r"[0-9a-f]{64}", tool[1])
+                or tool[0] in names
+            ):
+                raise ConnectorGatewayError("hosted run authority is invalid")
+            names.add(tool[0])
+        signed_grants[connector_id] = names
+
+    connectors = authority.get("connectors")
+    if not isinstance(connectors, list) or len(connectors) > MAX_TOOLS:
+        raise ConnectorGatewayError("hosted connector list is invalid")
+    seen: set[str] = set()
+    for connector in connectors:
+        if not isinstance(connector, dict):
+            raise ConnectorGatewayError("hosted connector list is invalid")
+        connector_id = connector.get("id")
+        if (
+            not isinstance(connector_id, str)
+            or not CONNECTOR_ID.fullmatch(connector_id)
+            or connector_id in seen
+            or connector.get("mode") != "hosted"
+            or any(key in connector for key in ("endpoint", "dispatch", "auth"))
+        ):
+            raise ConnectorGatewayError("hosted connector list is invalid")
+        policy = connector.get("tool_policy")
+        if not isinstance(policy, dict) or not policy or len(policy) > MAX_TOOLS:
+            raise ConnectorGatewayError("hosted connector tool policy is invalid")
+        if connector_id not in signed_grants or set(policy) != signed_grants[connector_id]:
+            raise ConnectorGatewayError("hosted connector tool policy is not frozen")
+        for tool_name, rule in policy.items():
+            if (
+                not isinstance(tool_name, str)
+                or not TOOL_NAME.fullmatch(tool_name)
+                or not isinstance(rule, dict)
+                or rule.get("risk") != "read"
+            ):
+                raise ConnectorGatewayError("hosted connector tool policy is invalid")
+            constraints = rule.get("constraints")
+            if not isinstance(constraints, dict):
+                raise ConnectorGatewayError("hosted connector tool policy is invalid")
+            argument_limit = constraints.get("max_argument_bytes")
+            result_limit = constraints.get("max_result_bytes")
+            if (
+                isinstance(argument_limit, bool)
+                or not isinstance(argument_limit, int)
+                or argument_limit <= 0
+                or argument_limit > MAX_ARGUMENT_BYTES
+                or isinstance(result_limit, bool)
+                or not isinstance(result_limit, int)
+                or result_limit <= 0
+                or result_limit > MAX_RESULT_BYTES
+            ):
+                raise ConnectorGatewayError("hosted connector tool policy is invalid")
+        seen.add(connector_id)
 
 
 def connector_by_id(authority: dict[str, Any], connector_id: str) -> dict[str, Any]:
@@ -501,7 +644,11 @@ def public_connector_list(authority: dict[str, Any]) -> dict[str, Any]:
             {
                 "id": item["id"],
                 "name": item["name"],
-                "ready": bool(item.get("endpoint") or item.get("dispatch")),
+                "ready": bool(
+                    item.get("endpoint")
+                    or item.get("dispatch")
+                    or (_is_hosted_authority(authority) and item.get("mode") == "hosted")
+                ),
                 "allowed_tools": sorted(
                     name
                     for name, rule in (item.get("tool_policy") or {}).items()
@@ -511,6 +658,146 @@ def public_connector_list(authority: dict[str, Any]) -> dict[str, Any]:
             for item in authority.get("connectors") or []
         ],
     }
+
+
+def frozen_hosted_tools(connector: dict[str, Any]) -> list[dict[str, Any]]:
+    """Expose only tools frozen into a hosted run; never query a provider."""
+
+    policy = connector.get("tool_policy") or {}
+    return [
+        {
+            "name": name,
+            "title": None,
+            "description": "Certified read-only company-system tool.",
+            "input_schema": {"type": "object", "additionalProperties": True},
+            "allowed": True,
+            "risk": "read",
+        }
+        for name, rule in sorted(policy.items())
+        if isinstance(rule, dict) and rule.get("risk") == "read"
+    ]
+
+
+async def _mint_relay_identity_token(audience: str, service_account: str) -> str:
+    try:
+        from runner_oidc import mint_runner_identity_token
+    except (ImportError, AttributeError) as exc:
+        raise ConnectorGatewayError("hosted connector relay identity is unavailable") from exc
+    try:
+        if inspect.iscoroutinefunction(mint_runner_identity_token):
+            token = await mint_runner_identity_token(audience, service_account)
+        else:
+            token = await asyncio.to_thread(mint_runner_identity_token, audience, service_account)
+            if inspect.isawaitable(token):
+                token = await token
+    except Exception as exc:
+        raise ConnectorGatewayError("hosted connector relay identity could not be minted") from exc
+    if (
+        not isinstance(token, str)
+        or not token
+        or len(token.encode("utf-8")) > MAX_IDENTITY_TOKEN_BYTES
+        or any(character.isspace() for character in token)
+    ):
+        raise ConnectorGatewayError("hosted connector relay identity is invalid")
+    return token
+
+
+def _relay_http_client() -> httpx.AsyncClient:
+    return httpx.AsyncClient(
+        timeout=httpx.Timeout(30.0, read=90.0),
+        follow_redirects=False,
+    )
+
+
+async def _bounded_response_bytes(response: httpx.Response) -> bytes:
+    content_length = response.headers.get("content-length")
+    if content_length is not None:
+        try:
+            declared = int(content_length)
+        except ValueError as exc:
+            raise ConnectorGatewayError("hosted connector relay response is malformed") from exc
+        if declared < 0 or declared > MAX_RELAY_RESPONSE_BYTES:
+            raise ConnectorGatewayError("hosted connector relay response is too large")
+    body = bytearray()
+    async for chunk in response.aiter_bytes():
+        body.extend(chunk)
+        if len(body) > MAX_RELAY_RESPONSE_BYTES:
+            raise ConnectorGatewayError("hosted connector relay response is too large")
+    return bytes(body)
+
+
+def _strict_json_object(data: bytes) -> dict[str, Any]:
+    def no_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate JSON key")
+            result[key] = value
+        return result
+
+    try:
+        decoded = data.decode("utf-8")
+        value = json.loads(decoded, object_pairs_hook=no_duplicates)
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise ConnectorGatewayError("hosted connector relay response is malformed") from exc
+    if not isinstance(value, dict):
+        raise ConnectorGatewayError("hosted connector relay response is malformed")
+    return value
+
+
+async def _call_hosted_relay(
+    authority: dict[str, Any],
+    connector_id: str,
+    tool_name: str,
+    arguments: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    relay = authority["relay"]
+    token = await _mint_relay_identity_token(relay["audience"], relay["identity_service_account"])
+    request = {
+        "authority": authority["hosted_run_authority"],
+        "run_id": authority["run_id"],
+        "call_id": secrets.token_hex(16),
+        "tool_name": tool_name,
+        "arguments": arguments,
+    }
+    try:
+        encoded = json.dumps(
+            request, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise ConnectorGatewayError("hosted connector relay arguments are invalid") from exc
+    if len(encoded) > MAX_RELAY_REQUEST_BYTES:
+        raise ConnectorGatewayError("hosted connector relay request is too large")
+    endpoint = relay["url"] + "/v1/internal/run-connectors/" + connector_id + ":invoke"
+    headers = {
+        "Authorization": "Bearer " + token,
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+    try:
+        async with (
+            _relay_http_client() as client,
+            client.stream("POST", endpoint, content=encoded, headers=headers) as response,
+        ):
+            body = await _bounded_response_bytes(response)
+            status = response.status_code
+            content_type = response.headers.get("content-type", "").partition(";")[0].strip()
+    except ConnectorGatewayError:
+        raise
+    except (httpx.HTTPError, OSError) as exc:
+        raise ConnectorGatewayError("hosted connector relay request failed") from exc
+    if status < 200 or status >= 300:
+        raise ConnectorGatewayError(f"hosted connector relay returned HTTP {status}")
+    if content_type.casefold() != "application/json":
+        raise ConnectorGatewayError("hosted connector relay response is malformed")
+    value = _strict_json_object(body)
+    if set(value) != {"payload", "receipt"}:
+        raise ConnectorGatewayError("hosted connector relay response is malformed")
+    payload = value["payload"]
+    receipt = value["receipt"]
+    if not isinstance(payload, dict) or not isinstance(receipt, dict):
+        raise ConnectorGatewayError("hosted connector relay response is malformed")
+    return payload, receipt
 
 
 async def call_allowed_tool(
@@ -537,6 +824,8 @@ async def call_allowed_tool(
         raise ConnectorGatewayError(
             f"{connector_id}.{tool_name} is not on this run's tool allowlist"
         )
+    if arguments is not None and not isinstance(arguments, dict):
+        raise ConnectorGatewayError(f"{connector_id}.{tool_name} arguments must be an object")
     args = arguments or {}
     risk = rule.get("risk")
     started = time.monotonic()
@@ -635,10 +924,18 @@ async def call_allowed_tool(
                 f"{connector_id}.{tool_name} approval was refused: {exc}"
             ) from exc
     try:
-        remote_connector, remote_tool = _dispatch_tool(connector, tool_name)
-        async with remote_session(remote_connector) as session:
-            result = await session.call_tool(remote_tool, args)
-        payload = result.model_dump(mode="json", by_alias=True, exclude_none=True)
+        if _is_hosted_authority(authority):
+            payload, relay_receipt = await _call_hosted_relay(
+                authority, connector_id, tool_name, args
+            )
+            result_is_error = payload.get("isError") is True
+        else:
+            remote_connector, remote_tool = _dispatch_tool(connector, tool_name)
+            async with remote_session(remote_connector) as session:
+                result = await session.call_tool(remote_tool, args)
+            payload = result.model_dump(mode="json", by_alias=True, exclude_none=True)
+            relay_receipt = None
+            result_is_error = bool(result.isError)
         result_bytes = len(json.dumps(payload, default=str, separators=(",", ":")).encode())
         result_limit = min(
             int(constraints.get("max_result_bytes", MAX_RESULT_BYTES)), MAX_RESULT_BYTES
@@ -656,10 +953,15 @@ async def call_allowed_tool(
                 "decision": "allowed",
                 "arguments_sha256": _json_hash(args),
                 "result_sha256": _json_hash(payload),
-                "result_is_error": bool(result.isError),
+                "result_is_error": result_is_error,
                 "argument_bytes": argument_bytes,
                 "result_bytes": result_bytes,
                 "duration_ms": round((time.monotonic() - started) * 1000),
+                **(
+                    {"relay_receipt_sha256": _json_hash(relay_receipt)}
+                    if relay_receipt is not None
+                    else {}
+                ),
                 **({"approval_id": approval_receipt["approval_id"]} if approval_receipt else {}),
             },
         )
@@ -697,9 +999,14 @@ def gateway_list() -> dict[str, Any]:
 
 @mcp.tool(name="rally_connector_tools")
 async def gateway_tools(connector_id: str) -> dict[str, Any]:
-    """Discover a run-enabled connector's live MCP tools without executing one."""
+    """List a run-enabled connector's tools without executing one."""
     authority = load_authority()
     connector = connector_by_id(authority, connector_id)
+    if _is_hosted_authority(authority):
+        return {
+            "connector_id": connector_id,
+            "tools": frozen_hosted_tools(connector),
+        }
     tools = await discover_tools(connector)
     allowed = connector.get("tool_policy") or {}
     return {

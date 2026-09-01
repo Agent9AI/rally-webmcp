@@ -73,11 +73,22 @@ def classify_email(message, cfg=CFG, raw_headers=DEFAULT_RAW):
     return I.classify(message, cfg, raw_headers)
 
 
+def authority_timestamp(offset):
+    value = I.dt.datetime.now(I.dt.timezone.utc) + offset
+    return value.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
 def dashboard_payload():
+    run_id = "r-20260831-123e4567-e89b-42d3-a456-426614174000"
+    requester = {
+        "user_id": "google:owner-1",
+        "email": "owner@example.com",
+        "workspace_id": "agent9-rally",
+    }
     return {
         "source": "dashboard",
-        "schema_version": 1,
-        "run_id": "r-20260831-123e4567-e89b-42d3-a456-426614174000",
+        "schema_version": 2,
+        "run_id": run_id,
         "accepted_at": "2026-08-31T12:00:00.000Z",
         "request_fingerprint": "a" * 64,
         "job": {
@@ -86,10 +97,24 @@ def dashboard_payload():
             "source_run_id": "r-20260831-source",
             "second_wind": True,
         },
+        "requester": requester,
         "authority": {
-            "user_id": "google:owner-1",
-            "email": "owner@example.com",
-            "workspace_id": "agent9-rally",
+            "schema": "rally.hosted-run-authority/v1",
+            "run_id": run_id,
+            "uid": requester["user_id"],
+            "workspace_id": requester["workspace_id"],
+            "issued_at": authority_timestamp(I.dt.timedelta(minutes=-1)),
+            "expires_at": authority_timestamp(I.dt.timedelta(days=30)),
+            "default_decision": "deny",
+            "grants": [{
+                "connector_id": "github",
+                "authorization_generation": "b" * 32,
+                "proof_version": "rally.connection-certification/v1",
+                "certified_manifest_sha256": "c" * 64,
+                "certified_policy_sha256": "d" * 64,
+                "certified_tools": [["get_me", "e" * 64]],
+            }],
+            "signature": "f" * 64,
         },
     }
 
@@ -482,13 +507,16 @@ class TestRouting(unittest.TestCase):
         self.assertEqual(classify_email(msg(subject="", text="   "))[0], "ignored")
 
     def test_typed_dashboard_envelope_is_commission_only(self):
-        kind, detail = I.classify_dashboard(dashboard_payload())
+        payload = dashboard_payload()
+        kind, detail = I.classify_dashboard(payload)
 
         self.assertEqual(kind, "commission")
         self.assertEqual(detail["sender"], "owner@example.com")
-        self.assertEqual(detail["run_id"], dashboard_payload()["run_id"])
-        self.assertEqual(detail["request_key"], dashboard_payload()["run_id"])
+        self.assertEqual(detail["run_id"], payload["run_id"])
+        self.assertEqual(detail["request_key"], payload["run_id"])
         self.assertEqual(detail["source_run_id"], "r-20260831-source")
+        self.assertEqual(detail["requester_user_id"], "google:owner-1")
+        self.assertEqual(detail["hosted_run_authority"], payload["authority"])
         self.assertTrue(detail["second_wind"])
         self.assertEqual(detail["research_mode"], "standard")
         self.assertTrue(detail["task"].startswith("Prove the workflow\n\nGoal:\n"))
@@ -498,6 +526,8 @@ class TestRouting(unittest.TestCase):
         kind, detail = I.classify_dashboard(ruflo)
         self.assertEqual(kind, "commission")
         self.assertEqual(detail["research_mode"], "ruflo")
+        self.assertEqual(detail["requester_user_id"], "google:owner-1")
+        self.assertEqual(detail["hosted_run_authority"], ruflo["authority"])
 
         invalid = dashboard_payload()
         invalid["job"]["research_mode"] = "all"
@@ -509,7 +539,42 @@ class TestRouting(unittest.TestCase):
         self.assertEqual(I.classify_dashboard(payload)[0], "ignored")
 
         payload = dashboard_payload()
-        payload["authority"]["email"] = "Owner <owner@example.com>"
+        payload["requester"]["email"] = "Owner <owner@example.com>"
+        self.assertEqual(I.classify_dashboard(payload)[0], "ignored")
+
+        payload = dashboard_payload()
+        payload["authority"]["uid"] = "google:another-user"
+        self.assertEqual(I.classify_dashboard(payload)[0], "ignored")
+
+    def test_dashboard_envelope_rejects_unsigned_v1_transition(self):
+        payload = dashboard_payload()
+        requester = payload.pop("requester")
+        payload["schema_version"] = 1
+        payload["authority"] = requester
+
+        kind, detail = I.classify_dashboard(payload)
+
+        self.assertEqual(kind, "ignored")
+        self.assertEqual(detail["why"], "invalid dashboard commission envelope")
+
+    def test_dashboard_envelope_rejects_noncanonical_hosted_grants(self):
+        payload = dashboard_payload()
+        first = payload["authority"]["grants"][0]
+        payload["authority"]["grants"] = [
+            first,
+            {
+                **first,
+                "connector_id": "atlassian",
+                "authorization_generation": "a" * 32,
+            },
+        ]
+        self.assertEqual(I.classify_dashboard(payload)[0], "ignored")
+
+        payload = dashboard_payload()
+        payload["authority"]["grants"][0]["certified_tools"] = [
+            ["z.last", "e" * 64],
+            ["a.first", "d" * 64],
+        ]
         self.assertEqual(I.classify_dashboard(payload)[0], "ignored")
 
     def test_collect_acks_non_received_events_without_resend_hydration(self):

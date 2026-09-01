@@ -32,6 +32,7 @@ const MAX_CONNECTOR_START_BODY = 16 * 1024;
 const MAX_CONNECTOR_START_RESPONSE = 16 * 1024;
 const MAX_CONNECTOR_CALLBACK_QUERY = 12 * 1024;
 const MAX_WORKSPACE_IDENTITY_RESPONSE = 16 * 1024;
+const MAX_RUN_AUTHORITY_RESPONSE = 128 * 1024;
 const MAX_MANUAL_JOB_BODY = 12 * 1024;
 const MAX_CONTROL_PLANE_BODY = 32 * 1024;
 const MAX_ARTIFACT_BODY = 8 * 1024 * 1024;
@@ -62,9 +63,17 @@ const SIMPLE_EMAIL = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[A-Za-z0-9.-]{1,253
 const DOMAIN_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{15,127}$/;
 const SHA256_HEX = /^[0-9a-f]{64}$/;
+const AUTHORIZATION_GENERATION = /^[0-9a-f]{32}$/;
+const TOOL_NAME = /^[A-Za-z0-9_.:/-]{1,160}$/;
+const RUN_AUTHORITY_SCHEMA = "rally.hosted-run-authority/v1";
+const CONNECTION_CERTIFICATION_SCHEMA = "rally.connection-certification/v1";
+const MAX_RUN_AUTHORITY_GRANTS = 32;
+const MAX_CERTIFIED_TOOLS_PER_GRANT = 128;
+const MAX_RUN_AUTHORITY_LIFETIME_MS = 35 * 24 * 60 * 60 * 1000;
 const RUN_STATUSES = new Set(["running", "complete", "blocked", "halted"]);
 const RESEARCH_STATUSES = new Set(["active", "pending", "rejected"]);
 const TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
+const AUTHORITY_TIMESTAMP = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})Z$/;
 const ARTIFACT_MIME_TYPES = new Set([
   "application/pdf",
   "audio/mpeg",
@@ -259,6 +268,9 @@ async function authenticatedWorkspace(request, env) {
   const userId = typeof identity?.uid === "string" ? identity.uid.trim() : "";
   return {
     key,
+    // Preserve only the already-sanitized, mutually exclusive browser proof
+    // for the run-authority mint. Never forward the original request headers.
+    auth_headers: new Headers(headers),
     identity: {
       user_id: USER_ID.test(userId) ? userId : null,
       email: normalizedEmail(identity?.email),
@@ -778,7 +790,13 @@ function visibleRunProjection(payload) {
       .filter((artifact) => artifact?.status === "ready")
       .map(({ status: _status, ...artifact }) => artifact)
     : [];
-  return { ...payload, artifacts };
+  const {
+    authority: _authority,
+    requester: _requester,
+    request_fingerprint: _requestFingerprint,
+    ...visible
+  } = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
+  return { ...visible, artifacts };
 }
 
 async function readyArtifactsAreStored(env, workspaceKeyValue, runId, artifacts) {
@@ -804,6 +822,105 @@ async function readyArtifactsAreStored(env, workspaceKeyValue, runId, artifacts)
       object.customMetadata?.sha256 !== artifact.sha256 ||
       (objectSha256 && objectSha256 !== artifact.sha256)
     ) return false;
+  }
+  return true;
+}
+
+function hasExactKeys(value, expected) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const keys = Object.keys(value);
+  return keys.length === expected.length && expected.every((key) => Object.hasOwn(value, key));
+}
+
+function authorityTimestampMilliseconds(value) {
+  if (typeof value !== "string") return null;
+  const parts = AUTHORITY_TIMESTAMP.exec(value);
+  if (!parts) return null;
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return null;
+  const instant = new Date(parsed);
+  const components = [
+    instant.getUTCFullYear(),
+    instant.getUTCMonth() + 1,
+    instant.getUTCDate(),
+    instant.getUTCHours(),
+    instant.getUTCMinutes(),
+    instant.getUTCSeconds(),
+  ];
+  return components.every((component, index) => component === Number(parts[index + 1]))
+    ? parsed
+    : null;
+}
+
+function validRequesterIdentity(value, workspaceId = null) {
+  return Boolean(
+    hasExactKeys(value, ["user_id", "email", "workspace_id"]) &&
+    USER_ID.test(value.user_id || "") &&
+    normalizedEmail(value.email) === value.email &&
+    WORKSPACE_ID.test(value.workspace_id || "") &&
+    (workspaceId === null || value.workspace_id === workspaceId)
+  );
+}
+
+function validRunAuthority(value, expected, requireCurrent = true) {
+  if (!hasExactKeys(value, [
+    "schema", "run_id", "uid", "workspace_id", "issued_at", "expires_at",
+    "default_decision", "grants", "signature",
+  ])) return false;
+  if (
+    value.schema !== RUN_AUTHORITY_SCHEMA ||
+    value.run_id !== expected.run_id ||
+    value.uid !== expected.uid ||
+    value.workspace_id !== expected.workspace_id ||
+    value.default_decision !== "deny" ||
+    !SHA256_HEX.test(value.signature || "") ||
+    !Array.isArray(value.grants) ||
+    value.grants.length > MAX_RUN_AUTHORITY_GRANTS
+  ) return false;
+
+  const issuedAt = authorityTimestampMilliseconds(value.issued_at);
+  const expiresAt = authorityTimestampMilliseconds(value.expires_at);
+  if (
+    issuedAt === null || expiresAt === null || expiresAt <= issuedAt ||
+    expiresAt - issuedAt > MAX_RUN_AUTHORITY_LIFETIME_MS
+  ) return false;
+  if (requireCurrent) {
+    const current = Date.now();
+    if (issuedAt > current + 60 * 1000 || expiresAt <= current) return false;
+  }
+
+  const connectors = new Set();
+  let previousConnectorId = null;
+  for (const grant of value.grants) {
+    if (!hasExactKeys(grant, [
+      "connector_id", "authorization_generation", "proof_version",
+      "certified_manifest_sha256", "certified_policy_sha256", "certified_tools",
+    ])) return false;
+    if (
+      !CONNECTOR_ID.test(grant.connector_id || "") ||
+      connectors.has(grant.connector_id) ||
+      (previousConnectorId !== null && grant.connector_id <= previousConnectorId) ||
+      !AUTHORIZATION_GENERATION.test(grant.authorization_generation || "") ||
+      grant.proof_version !== CONNECTION_CERTIFICATION_SCHEMA ||
+      !SHA256_HEX.test(grant.certified_manifest_sha256 || "") ||
+      !SHA256_HEX.test(grant.certified_policy_sha256 || "") ||
+      !Array.isArray(grant.certified_tools) || grant.certified_tools.length < 1 ||
+      grant.certified_tools.length > MAX_CERTIFIED_TOOLS_PER_GRANT
+    ) return false;
+    connectors.add(grant.connector_id);
+    previousConnectorId = grant.connector_id;
+    const tools = new Set();
+    let previousToolName = null;
+    for (const certifiedTool of grant.certified_tools) {
+      if (
+        !Array.isArray(certifiedTool) || certifiedTool.length !== 2 ||
+        !TOOL_NAME.test(certifiedTool[0] || "") || tools.has(certifiedTool[0]) ||
+        (previousToolName !== null && certifiedTool[0] <= previousToolName) ||
+        !SHA256_HEX.test(certifiedTool[1] || "")
+      ) return false;
+      tools.add(certifiedTool[0]);
+      previousToolName = certifiedTool[0];
+    }
   }
   return true;
 }
@@ -860,19 +977,30 @@ function normalizeManualJob(value) {
 }
 
 function acceptedManualJob(envelope, fingerprint, workspaceId) {
-  return Boolean(
+  const common = Boolean(
     envelope &&
     typeof envelope === "object" &&
     !Array.isArray(envelope) &&
     envelope.source === "dashboard" &&
-    envelope.schema_version === 1 &&
     RUN_ID.test(envelope.run_id || "") &&
     TIMESTAMP.test(envelope.accepted_at || "") &&
     SHA256_HEX.test(envelope.request_fingerprint || "") &&
     envelope.request_fingerprint === fingerprint &&
-    envelope.authority?.workspace_id === workspaceId &&
     typeof envelope.job?.title === "string"
   );
+  if (!common) return false;
+  if (envelope.schema_version === 1) {
+    return envelope.authority?.workspace_id === workspaceId;
+  }
+  if (
+    envelope.schema_version !== 2 ||
+    !validRequesterIdentity(envelope.requester, workspaceId)
+  ) return false;
+  return validRunAuthority(envelope.authority, {
+    run_id: envelope.run_id,
+    uid: envelope.requester.user_id,
+    workspace_id: workspaceId,
+  }, false);
 }
 
 function acceptedManualJobResponse(receipt, fingerprint) {
@@ -892,6 +1020,72 @@ function acceptedManualJobResponse(receipt, fingerprint) {
     202,
     { location: `${WORKSPACE_ROOT}/${receipt.run_id}` },
   );
+}
+
+async function mintRunAuthority(workspace, runId) {
+  const headers = new Headers(workspace.auth_headers || {});
+  const hasIdToken = headers.has("x-rally-id-token");
+  const hasSession = headers.has("x-rally-session");
+  if (hasIdToken === hasSession) {
+    return { response: json({ detail: "job authority is unavailable" }, 503) };
+  }
+  headers.set("accept", "application/json");
+  headers.set("content-type", "application/json");
+
+  let upstream;
+  try {
+    upstream = await fetch(`${CONTROL_PLANE_ORIGIN}/v1/run-authorities`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        run_id: runId,
+        workspace_id: workspace.identity.workspace_id,
+      }),
+      redirect: "manual",
+    });
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: "manual_job_authority_mint_failed",
+      error: error instanceof Error ? error.message : String(error),
+    }));
+    return { response: json({ detail: "job authority is unavailable" }, 502) };
+  }
+  if (!upstream.ok) {
+    const status = upstream.status === 401 || upstream.status === 403 ? upstream.status : 502;
+    return {
+      response: json({
+        detail: status === 502 ? "job authority is unavailable" : "authentication required",
+      }, status),
+    };
+  }
+  const contentType = (upstream.headers.get("content-type") || "")
+    .split(";", 1)[0]
+    .trim()
+    .toLowerCase();
+  if (contentType !== "application/json") {
+    return { response: json({ detail: "job authority is unavailable" }, 502) };
+  }
+  const raw = await boundedText(upstream, MAX_RUN_AUTHORITY_RESPONSE);
+  if (raw === null) {
+    return { response: json({ detail: "job authority is unavailable" }, 502) };
+  }
+  let payload;
+  try {
+    payload = JSON.parse(raw);
+  } catch (_) {
+    return { response: json({ detail: "job authority is unavailable" }, 502) };
+  }
+  if (
+    !hasExactKeys(payload, ["authority"]) ||
+    !validRunAuthority(payload.authority, {
+      run_id: runId,
+      uid: workspace.identity.user_id,
+      workspace_id: workspace.identity.workspace_id,
+    })
+  ) {
+    return { response: json({ detail: "job authority is unavailable" }, 502) };
+  }
+  return { authority: payload.authority };
 }
 
 function queuedRunProjection(record) {
@@ -931,7 +1125,7 @@ async function createManualJob(request, env, workspace) {
   if (!IDEMPOTENCY_KEY.test(idempotencyKey)) {
     return json({ detail: "a valid idempotency-key is required" }, 400);
   }
-  if (!workspace.identity?.user_id || !workspace.identity?.email) {
+  if (!validRequesterIdentity(workspace.identity)) {
     return json({ detail: "workspace identity is unavailable" }, 503);
   }
 
@@ -1027,15 +1221,18 @@ async function createManualJob(request, env, workspace) {
 
   const acceptedAt = new Date().toISOString();
   const runId = `r-${acceptedAt.slice(0, 10).replaceAll("-", "")}-${crypto.randomUUID()}`;
+  const minted = await mintRunAuthority(workspace, runId);
+  if (minted.response) return minted.response;
   const messageId = crypto.randomUUID();
   const envelope = {
     source: "dashboard",
-    schema_version: 1,
+    schema_version: 2,
     run_id: runId,
     accepted_at: acceptedAt,
     request_fingerprint: fingerprint,
     job,
-    authority: workspace.identity,
+    requester: workspace.identity,
+    authority: minted.authority,
   };
 
   try {

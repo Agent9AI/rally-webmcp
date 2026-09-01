@@ -126,6 +126,7 @@ def live_certification(tool="get_me"):
         "proof_version": "rally.connection-certification/v1",
         "certified_tools": manifest,
         "certified_manifest_sha256": certified_manifest_sha256(manifest),
+        "certified_policy_sha256": "b" * 64,
     }
 
 
@@ -203,3 +204,45 @@ async def test_disconnect_cannot_cross_an_active_execution_lease():
         expected_lease=claimed.record.execution_lease or "",
     )
     assert await vault.begin_disconnect("user", "github") is not None
+
+
+@pytest.mark.asyncio
+async def test_authorization_generation_survives_rotation_and_revokes_on_quarantine():
+    vault = MemoryConnectorVault()
+    original = ConnectorSecret("original-secret", "bearer_token")
+    created = await vault.put("user", "github", original)
+    assert len(created.authorization_generation) == 32
+
+    await vault.mark("user", "github", **live_certification())
+    claimed = await vault.claim_execution("user", "github")
+    assert claimed is not None
+    rotated = await vault.rotate(
+        "user",
+        "github",
+        expected_generation=claimed.record.credential_generation,
+        expected_lease=claimed.record.execution_lease or "",
+        expected=original,
+        secret=ConnectorSecret("rotated-secret", "bearer_token"),
+    )
+    assert rotated is not None
+    assert rotated.credential_generation != created.credential_generation
+    assert rotated.authorization_generation == created.authorization_generation
+    assert await vault.release_execution(
+        "user",
+        "github",
+        expected_lease=claimed.record.execution_lease or "",
+    )
+
+    claimed = await vault.claim_execution("user", "github")
+    assert claimed is not None
+    assert await vault.quarantine(
+        "user",
+        "github",
+        expected_generation=claimed.record.credential_generation,
+        expected_lease=claimed.record.execution_lease or "",
+        expected=ConnectorSecret("rotated-secret", "bearer_token"),
+        error_code="reconnect_required",
+    )
+    [quarantined] = await vault.list("user")
+    assert quarantined.authorization_generation != created.authorization_generation
+    assert quarantined.certified_policy_sha256 is None

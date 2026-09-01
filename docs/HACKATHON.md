@@ -148,15 +148,15 @@ preservation, not just whether the final answer sounds good.
 
 Onboard Rally through one administrator-controlled connection center. Every
 model entitlement and business-system connection belongs to one user profile;
-Rally never pools a provider seat or connector token. All ten catalogued
-business systems now have runnable gateway adapters with Google ADC, OAuth, or
-external bearer authentication, live discovery, per-run allowlists,
-provider-safe presets, exact human approvals, and content-free receipts.
-Customer app registration and live authorization still have to be completed
-independently for Google Workspace, Slack, GitHub, and Salesforce; Rally never
-calls those accounts connected before their provider checks pass. Each connection declares what Rally
-may read and which actions require a real pre-execution gate. Use the shipped
-A2A v1.0 boundary to admit
+Rally never pools a provider seat or connector token. The hosted admin presents
+nine supported systems; each remains unconnected until that person's provider
+authorization, allowlist-matched discovery, and harmless live canary pass.
+Google Workspace, Slack, and Salesforce remain disabled until their required
+app registrations are complete, while GitHub uses a guided fine-grained-token
+path. BigQuery is a separate tenth runtime adapter using operator-owned Google
+ADC, not a hosted catalog card. Every admitted connector receives a signed,
+run-scoped, deny-by-default tool grant with content-free receipts and exact
+pre-execution gates. Use the shipped A2A v1.0 boundary to admit
 additional external agents without moving policy, ownership, or verification
 out of Rally's deterministic control plane. The
 one-company identity, cross-model team, and no-self-approval contract remain

@@ -62,6 +62,7 @@ class ExecutionReceiptStoreError(RuntimeError):
 
 
 _TOOL_NAME: Final = re.compile(r"^[A-Za-z0-9_.:/-]{1,160}$")
+_EXECUTION_ID: Final = re.compile(r"^[a-f0-9]{32}$")
 _CERTIFICATION_SCHEMA: Final = "rally.connection-certification/v1"
 _RECEIPT_SCHEMA: Final = "rally.connector-execution-receipt/v1"
 _MAX_ARGUMENT_BYTES: Final = 64 * 1024
@@ -149,6 +150,7 @@ class ExecutionReceipt:
     error_code: str | None = None
     duration_ms: int | None = None
     credential_generation: str | None = None
+    authorization_generation: str | None = None
     certified_manifest_sha256: str | None = None
     policy_sha256: str | None = None
     schema: str = _RECEIPT_SCHEMA
@@ -569,6 +571,65 @@ def _enforce_tool_policy(
     return encoded, min(result_cap, _MAX_RESULT_BYTES), policy_sha256
 
 
+def connector_policy_sha256(
+    connector_id: str,
+    allowed_workflow_ids: tuple[str, ...] = (),
+) -> str:
+    """Return the immutable digest of one connector's certified safe preset."""
+
+    item = connector(connector_id)
+    try:
+        preset = build_connector_preset(
+            item.id,
+            item.safe_preset,
+            allowed_workflow_ids=(allowed_workflow_ids if item.id == "n8n" else None),
+        )
+    except ConnectorPresetError as exc:
+        raise HostedExecutionError("safe_preset_unavailable") from exc
+    return hashlib.sha256(_canonical_json(preset)).hexdigest()
+
+
+def _require_frozen_grant(
+    *,
+    connector_id: str,
+    record: Any,
+    authority_grant: dict[str, Any],
+) -> None:
+    """Bind a signed grant to the exact record claimed for provider execution."""
+
+    expected_keys = {
+        "connector_id",
+        "authorization_generation",
+        "proof_version",
+        "certified_manifest_sha256",
+        "certified_policy_sha256",
+        "certified_tools",
+    }
+    if set(authority_grant) != expected_keys:
+        raise HostedExecutionError("run_authority_invalid")
+    raw_tools = authority_grant.get("certified_tools")
+    if not isinstance(raw_tools, list) or any(
+        not isinstance(entry, list)
+        or len(entry) != 2
+        or not all(isinstance(value, str) for value in entry)
+        for entry in raw_tools
+    ):
+        raise HostedExecutionError("run_authority_invalid")
+    grant_tools = tuple((entry[0], entry[1]) for entry in raw_tools)
+    if (
+        authority_grant.get("connector_id") != connector_id
+        or authority_grant.get("authorization_generation")
+        != record.authorization_generation
+        or authority_grant.get("proof_version") != record.proof_version
+        or authority_grant.get("certified_manifest_sha256")
+        != record.certified_manifest_sha256
+        or authority_grant.get("certified_policy_sha256")
+        != record.certified_policy_sha256
+        or grant_tools != record.certified_tools
+    ):
+        raise HostedExecutionError("run_authority_stale")
+
+
 def _route(item: HostedConnector, material: _RuntimeMaterial, tool_name: str) -> tuple[str, str]:
     if not item.service_endpoints:
         return material.endpoint, tool_name
@@ -777,13 +838,19 @@ class HostedConnectorExecutor:
         connector_id: str,
         tool_name: str,
         arguments: dict[str, Any],
+        authority_grant: dict[str, Any] | None = None,
+        execution_id: str | None = None,
     ) -> HostedExecutionResult:
         if not isinstance(arguments, dict) or any(not isinstance(key, str) for key in arguments):
             raise HostedExecutionError("arguments_invalid")
+        if execution_id is not None and (
+            not isinstance(execution_id, str) or not _EXECUTION_ID.fullmatch(execution_id)
+        ):
+            raise HostedExecutionError("execution_id_invalid")
         argument_bytes = _canonical_json(arguments)
         created = self.clock()
         receipt = ExecutionReceipt(
-            execution_id=secrets.token_hex(16),
+            execution_id=execution_id or secrets.token_hex(16),
             connector_id=connector_id,
             tool_name=tool_name,
             decision="started",
@@ -798,6 +865,7 @@ class HostedConnectorExecutor:
         result_is_error: bool | None = None
         secret: ConnectorSecret | None = None
         credential_generation: str | None = None
+        authorization_generation: str | None = None
         certified_manifest: str | None = None
         policy_sha256: str | None = None
         lease: str | None = None
@@ -827,13 +895,22 @@ class HostedConnectorExecutor:
                         or not record.canary_tool
                         or not record.tool_schema_sha256
                         or not record.credential_generation
+                        or not record.authorization_generation
                         or not lease
                         or record.tool_count != len(record.certified_tools)
                         or record.certified_manifest_sha256
                         != certified_manifest_sha256(record.certified_tools)
+                        or not record.certified_policy_sha256
                     ):
                         raise HostedExecutionError("connection_not_ready")
+                    if authority_grant is not None:
+                        _require_frozen_grant(
+                            connector_id=connector_id,
+                            record=record,
+                            authority_grant=authority_grant,
+                        )
                     credential_generation = record.credential_generation
+                    authorization_generation = record.authorization_generation
                     certified_manifest = record.certified_manifest_sha256
                     refreshed_once = False
                     try:
@@ -861,6 +938,12 @@ class HostedConnectorExecutor:
                         arguments,
                         material.allowed_workflow_ids,
                     )
+                    if policy_sha256 != record.certified_policy_sha256:
+                        raise HostedExecutionError(
+                            "run_authority_stale"
+                            if authority_grant is not None
+                            else "connection_not_ready"
+                        )
                     expected_schema_sha256 = dict(record.certified_tools).get(tool_name)
                     if expected_schema_sha256 is None:
                         raise HostedExecutionError("tool_not_certified")
@@ -962,6 +1045,7 @@ class HostedConnectorExecutor:
         bound_receipt = replace(
             receipt,
             credential_generation=credential_generation,
+            authorization_generation=authorization_generation,
             certified_manifest_sha256=certified_manifest,
             policy_sha256=policy_sha256,
         )

@@ -13,7 +13,7 @@ import os
 import re
 import subprocess
 import urllib.parse
-from typing import Dict, Iterable, List, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -22,6 +22,7 @@ DEFAULT_LOCAL = os.path.join(ROOT, "config", "connectors.local.json")
 RISK_CLASSES = {"read", "verify_first", "human_approval", "deny"}
 KEYCHAIN_SERVICE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 TOOL_PREFIX = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
+TOOL_NAME = re.compile(r"^[A-Za-z0-9_.:/-]{1,160}$")
 GOOGLE_WORKSPACE_ENDPOINTS = {
     "gmail": "https://gmailmcp.googleapis.com/mcp/v1",
     "drive": "https://drivemcp.googleapis.com/mcp/v1",
@@ -459,6 +460,94 @@ def authority_snapshot(cfg: Dict, run_id: str, receipt_path: str,
     }
 
 
+def hosted_authority_snapshot(
+        cfg: Dict, run_id: str, receipt_path: str, signed: Dict) -> Dict:
+    """Build a secret-free relay policy from one immutable hosted authority."""
+    if (not isinstance(signed, dict)
+            or signed.get("schema") != "rally.hosted-run-authority/v1"
+            or signed.get("run_id") != run_id
+            or signed.get("default_decision") != "deny"
+            or not isinstance(signed.get("uid"), str)
+            or not isinstance(signed.get("signature"), str)
+            or not isinstance(signed.get("grants"), list)):
+        raise ConnectorConfigError("hosted connector authority is invalid")
+    settings = dict((cfg.get("connectors") or {}).get("hosted_gateway") or {})
+    if set(settings) != {"url", "audience", "identity_service_account"}:
+        raise ConnectorConfigError("hosted connector gateway is not configured")
+    url = str(settings.get("url") or "").rstrip("/")
+    audience = str(settings.get("audience") or "")
+    service_account = str(settings.get("identity_service_account") or "")
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        audience_parsed = urllib.parse.urlsplit(audience)
+    except ValueError as exc:
+        raise ConnectorConfigError("hosted connector gateway is invalid") from exc
+    if (parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password
+            or parsed.query or parsed.fragment or parsed.path not in {"", "/"}
+            or audience_parsed.scheme != "https" or not audience_parsed.hostname
+            or audience.rstrip("/") != url
+            or not re.fullmatch(
+                r"[A-Za-z0-9][A-Za-z0-9._-]{0,126}@[A-Za-z0-9.-]{1,190}",
+                service_account,
+            )):
+        raise ConnectorConfigError("hosted connector gateway is invalid")
+    catalog, catalog_path = load_catalog(cfg)
+    active = []
+    connector_ids = set()
+    for grant in signed["grants"]:
+        if not isinstance(grant, dict):
+            raise ConnectorConfigError("hosted connector grant is invalid")
+        connector_id = grant.get("connector_id")
+        tools = grant.get("certified_tools")
+        if (connector_id in connector_ids or connector_id not in catalog
+                or catalog[connector_id].get("runtime") != "gateway"
+                or not isinstance(tools, list) or not tools):
+            raise ConnectorConfigError("hosted connector grant is invalid")
+        tool_policy = {}
+        for tool in tools:
+            if (not isinstance(tool, list) or len(tool) != 2
+                    or not isinstance(tool[0], str) or not TOOL_NAME.fullmatch(tool[0])):
+                raise ConnectorConfigError("hosted connector tool grant is invalid")
+            tool_policy[tool[0]] = {
+                "risk": "read",
+                "constraints": {
+                    "max_argument_bytes": 64 * 1024,
+                    "max_result_bytes": 256 * 1024,
+                },
+            }
+        connector_ids.add(connector_id)
+        active.append({
+            "id": connector_id,
+            "name": catalog[connector_id]["name"],
+            "mode": "hosted",
+            "tool_policy": tool_policy,
+        })
+    if [item["id"] for item in active] != sorted(connector_ids):
+        raise ConnectorConfigError("hosted connector grants are not canonical")
+    return {
+        "schema_version": "rally.hosted-connector-authority/v1",
+        "run_id": run_id,
+        "credential_profile": "hosted-" + hashlib.sha256(
+            signed["uid"].encode()
+        ).hexdigest()[:20],
+        "default_decision": "deny",
+        "policy": {
+            "require_explicit_tool_allowlist": True,
+            "human_approval_tools_enabled": False,
+            "record_content": False,
+        },
+        "connectors": active,
+        "hosted_run_authority": signed,
+        "relay": {
+            "url": url,
+            "audience": audience,
+            "identity_service_account": service_account,
+        },
+        "receipt_path": os.path.abspath(receipt_path),
+        "catalog_path": os.path.relpath(catalog_path, ROOT),
+    }
+
+
 def _atomic_json(path: str, value: Dict, mode: int = 0o600) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     temporary = path + ".tmp"
@@ -470,14 +559,18 @@ def _atomic_json(path: str, value: Dict, mode: int = 0o600) -> None:
 
 
 def prepare_run(run_id: str, run_dir: str, cfg: Dict,
-                subject: str = "local") -> Dict:
+                subject: str = "local", hosted_authority: Optional[Dict] = None) -> Dict:
     """Write the MCP config and one user's frozen policy snapshot."""
     policy_path = os.path.join(run_dir, "connector-authority.json")
     receipt_path = os.path.join(run_dir, "connector-receipts.jsonl")
     approval_path = os.path.join(run_dir, "connector-approvals.json")
     mcp_path = os.path.join(run_dir, "connector-mcp.json")
-    authority = authority_snapshot(
-        cfg, run_id, receipt_path, subject, approval_path=approval_path
+    authority = (
+        hosted_authority_snapshot(cfg, run_id, receipt_path, hosted_authority)
+        if hosted_authority is not None
+        else authority_snapshot(
+            cfg, run_id, receipt_path, subject, approval_path=approval_path
+        )
     )
     _atomic_json(policy_path, authority)
     gateway = os.path.join(ROOT, "bin", "rally-connectors")
@@ -493,6 +586,7 @@ def prepare_run(run_id: str, run_dir: str, cfg: Dict,
     })
     return {
         "schema_version": authority["schema_version"],
+        "mode": "hosted" if hosted_authority is not None else "local",
         "default_decision": authority["default_decision"],
         "credential_profile": authority["credential_profile"],
         "enabled": [

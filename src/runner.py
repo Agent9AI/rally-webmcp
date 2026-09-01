@@ -142,6 +142,20 @@ def continuity_policy(cfg: Dict) -> Dict:
     }
 
 
+def connector_subject_for_authority(
+        fallback: str,
+        requester_user_id: Optional[str] = None,
+        hosted_run_authority: Optional[Dict] = None) -> str:
+    """Select the connector principal without losing a hosted user binding."""
+    if hosted_run_authority is None:
+        if requester_user_id is not None:
+            raise ValueError("invalid hosted run authority")
+        return fallback
+    if not isinstance(hosted_run_authority, dict) or not requester_user_id:
+        raise ValueError("invalid hosted run authority")
+    return "hosted:%s" % requester_user_id
+
+
 class ServeLock:
     def __init__(self, path: str):
         self.path = path
@@ -222,6 +236,8 @@ class Run:
                commission_message_id: Optional[str] = None,
                commission_request_key: Optional[str] = None,
                workspace_id: Optional[str] = None,
+               requester_user_id: Optional[str] = None,
+               hosted_run_authority: Optional[Dict] = None,
                source_run_id: Optional[str] = None,
                second_wind: Optional[bool] = None,
                research_mode: str = "standard") -> "Run":
@@ -231,6 +247,14 @@ class Run:
             raise ValueError("invalid run_id")
         if workspace_id is not None:
             workspace_id = rally_console.validate_workspace_id(workspace_id)
+        connector_subject = connector_subject_for_authority(
+            connector_subject, requester_user_id, hosted_run_authority
+        )
+        if hosted_run_authority is not None and (
+                hosted_run_authority.get("run_id") != rid
+                or hosted_run_authority.get("uid") != requester_user_id
+                or hosted_run_authority.get("workspace_id") != workspace_id):
+            raise ValueError("hosted run authority binding mismatch")
         research_mode = research.normalize_mode(research_mode)
         connectors.assert_worker_isolation(cfg, connector_subject)
         os.makedirs(RUNS, exist_ok=True)
@@ -262,6 +286,9 @@ class Run:
             state["commissioned_by"] = commissioned_by
         if workspace_id is not None:
             state["workspace_id"] = workspace_id
+        if hosted_run_authority is not None:
+            state["requester_user_id"] = requester_user_id
+            state["hosted_run_authority"] = hosted_run_authority
         if source_run_id:
             state["source_run_id"] = source_run_id
         if commission_message_id:
@@ -287,7 +314,11 @@ class Run:
             if os.path.isdir(staging):
                 shutil.rmtree(staging)
         state["connector_authority"] = connectors.prepare_run(
-            rid, d, cfg, connector_subject
+            rid,
+            d,
+            cfg,
+            connector_subject,
+            hosted_authority=hosted_run_authority,
         )
         r.save()
         return r
@@ -1016,7 +1047,11 @@ def initialize_commission_run(run: Run, cfg: Dict, connector_subject: str) -> No
     if not run.s.get("connector_authority"):
         connectors.assert_worker_isolation(cfg, connector_subject)
         run.s["connector_authority"] = connectors.prepare_run(
-            run.s["run_id"], os.path.dirname(run.path), cfg, connector_subject
+            run.s["run_id"],
+            os.path.dirname(run.path),
+            cfg,
+            connector_subject,
+            hosted_authority=run.s.get("hosted_run_authority"),
         )
         changed = True
     mode = research.normalize_mode(run.s.get("research_mode", "standard"))
@@ -1151,6 +1186,8 @@ def handle_commission(cfg: Dict, task: str, sender: str,
                       source_run_id: Optional[str] = None,
                       second_wind: Optional[bool] = None,
                       workspace_id: Optional[str] = None,
+                      requester_user_id: Optional[str] = None,
+                      hosted_run_authority: Optional[Dict] = None,
                       research_mode: str = "standard") -> str:
     research_mode = research.normalize_mode(research_mode)
     if workspace_id is not None:
@@ -1161,6 +1198,9 @@ def handle_commission(cfg: Dict, task: str, sender: str,
         print("recovered commission %s from durable ingress replay" % run.s["run_id"])
         if workspace_id is not None and run.s.get("workspace_id") != workspace_id:
             raise RuntimeError("commission workspace does not match its durable run")
+        if (run.s.get("hosted_run_authority") != hosted_run_authority
+                or run.s.get("requester_user_id") != requester_user_id):
+            raise RuntimeError("commission authority does not match its durable run")
         if research.normalize_mode(run.s.get("research_mode", "standard")) != research_mode:
             raise RuntimeError("commission research profile does not match its durable run")
         if run.s.get("report"):
@@ -1179,24 +1219,34 @@ def handle_commission(cfg: Dict, task: str, sender: str,
         run.s["halt"] = None
         run.note("resuming incomplete commission after delivery retry")
     else:
+        connector_subject = connector_subject_for_authority(
+            sender, requester_user_id, hosted_run_authority
+        )
         run = Run.create(
             task,
             ".",
             cfg,
             run_id=run_id,
-            connector_subject=sender,
+            connector_subject=connector_subject,
             commissioned_by=sender,
             commission_message_id=message_id,
             commission_request_key=durable_key,
             workspace_id=workspace_id,
+            requester_user_id=requester_user_id,
+            hosted_run_authority=hosted_run_authority,
             source_run_id=source_run_id,
             second_wind=second_wind,
             research_mode=research_mode,
         )
         print("commissioned %s by %s" % (run.s["run_id"], sender))
     request_key = run.s.get("commission_request_key") or message_id or run.s["run_id"]
+    connector_subject = connector_subject_for_authority(
+        sender,
+        run.s.get("requester_user_id"),
+        run.s.get("hosted_run_authority"),
+    )
     try:
-        initialize_commission_run(run, cfg, sender)
+        initialize_commission_run(run, cfg, connector_subject)
     except research.ResearchConfigError as exc:
         reject_research_run(run, cfg, research_mode, exc, request_key)
         return run.s["run_id"]
@@ -1253,8 +1303,13 @@ def handle_note(cfg: Dict, run_id: str, text: str,
         return
     if (run.s.get("research_mode") == "ruflo"
             and not run.s.get("research_authority")):
+        connector_subject = connector_subject_for_authority(
+            authenticated_sender,
+            run.s.get("requester_user_id"),
+            run.s.get("hosted_run_authority"),
+        )
         try:
-            initialize_commission_run(run, cfg, authenticated_sender)
+            initialize_commission_run(run, cfg, connector_subject)
         except research.ResearchConfigError as exc:
             reject_research_run(run, cfg, "ruflo", exc, note_key)
             return
@@ -1386,6 +1441,8 @@ def serve(cfg: Dict, once: bool = False) -> int:
                             source_run_id=detail.get("source_run_id"),
                             second_wind=detail.get("second_wind"),
                             workspace_id=detail.get("workspace_id"),
+                            requester_user_id=detail.get("requester_user_id"),
+                            hosted_run_authority=detail.get("hosted_run_authority"),
                             research_mode=detail.get("research_mode", "standard"),
                         )
                     elif kind == "note":

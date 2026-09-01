@@ -135,6 +135,7 @@ result.
 ChatGPT prepares visible job
   → person reviews or edits
   → browser confirms start
+  → Google control plane signs the run's deny-by-default connector grants
   → Cloudflare Worker stores the job in D1
   → Rally runner collects it
   → Gemini + Google ADK coordinate
@@ -170,6 +171,8 @@ ten-minute, one-use key that the person pastes into the same Rally tab. A closed
 - The browser's execution `AbortSignal` reaches the authenticated POST.
 - Run timelines, agent names, and deliverable metadata are returned as untrusted.
 - Credentials stay inside the page's existing authentication and connector code.
+- Hosted connector grants are signed and bound to the exact run, requester, and
+  workspace; the browser and D1 projections never receive credentials.
 - Ruflo is off by default, applies to one submitted run, and resets to Standard
   immediately after a successful submission.
 - Completed verified artifacts are fetched through the authenticated workspace

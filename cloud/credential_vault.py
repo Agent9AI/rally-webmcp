@@ -132,6 +132,7 @@ def _validate_certification(
     proof_version: str | None,
     certified_tools: Any,
     certified_manifest_sha256_value: str | None,
+    certified_policy_sha256_value: str | None,
 ) -> tuple[tuple[str, str], ...]:
     tools = _normalize_certified_tools(certified_tools)
     if status != "ready":
@@ -148,6 +149,8 @@ def _validate_certification(
         or proof_version != _CERTIFICATION_SCHEMA
         or not isinstance(certified_manifest_sha256_value, str)
         or not _SHA256.fullmatch(certified_manifest_sha256_value)
+        or not isinstance(certified_policy_sha256_value, str)
+        or not _SHA256.fullmatch(certified_policy_sha256_value)
         or not hmac.compare_digest(
             certified_manifest_sha256_value,
             certified_manifest_sha256(tools),
@@ -208,8 +211,10 @@ class ConnectionRecord:
     tool_schema_sha256: str | None = None
     proof_version: str | None = None
     credential_generation: str = ""
+    authorization_generation: str = ""
     certified_tools: tuple[tuple[str, str], ...] = ()
     certified_manifest_sha256: str | None = None
+    certified_policy_sha256: str | None = None
     execution_lease: str | None = None
     execution_lease_expires_at: dt.datetime | None = None
 
@@ -272,6 +277,7 @@ class ConnectorVault(Protocol):
         proof_version: str | None = None,
         certified_tools: tuple[tuple[str, str], ...] = (),
         certified_manifest_sha256: str | None = None,
+        certified_policy_sha256: str | None = None,
     ) -> ConnectionRecord | None: ...
 
     async def claim_execution(self, uid: str, connector_id: str) -> StoredConnection | None: ...
@@ -295,6 +301,7 @@ class ConnectorVault(Protocol):
         proof_version: str | None = None,
         certified_tools: tuple[tuple[str, str], ...] = (),
         certified_manifest_sha256: str | None = None,
+        certified_policy_sha256: str | None = None,
     ) -> ConnectionRecord: ...
 
     async def delete(
@@ -390,6 +397,7 @@ class MemoryConnectorVault:
                 created_at=now,
                 updated_at=now,
                 credential_generation=_new_generation(),
+                authorization_generation=_new_generation(),
             )
             self._items[key] = (secret, record)
             return record
@@ -466,6 +474,7 @@ class MemoryConnectorVault:
                 current[0],
                 replace(
                     current[1],
+                    authorization_generation=_new_generation(),
                     status="needs_attention",
                     updated_at=_utc_now(),
                     tool_count=0,
@@ -476,6 +485,7 @@ class MemoryConnectorVault:
                     proof_version=None,
                     certified_tools=(),
                     certified_manifest_sha256=None,
+                    certified_policy_sha256=None,
                     execution_lease=None,
                     execution_lease_expires_at=None,
                 ),
@@ -515,6 +525,7 @@ class MemoryConnectorVault:
                 proof_version=None,
                 certified_tools=(),
                 certified_manifest_sha256=None,
+                certified_policy_sha256=None,
                 execution_lease=lease,
                 execution_lease_expires_at=expiry,
             )
@@ -536,6 +547,7 @@ class MemoryConnectorVault:
         proof_version: str | None = None,
         certified_tools: tuple[tuple[str, str], ...] = (),
         certified_manifest_sha256: str | None = None,
+        certified_policy_sha256: str | None = None,
     ) -> ConnectionRecord | None:
         tools = _validate_certification(
             status=status,
@@ -545,6 +557,7 @@ class MemoryConnectorVault:
             proof_version=proof_version,
             certified_tools=certified_tools,
             certified_manifest_sha256_value=certified_manifest_sha256,
+            certified_policy_sha256_value=certified_policy_sha256,
         )
         if status not in {"ready", "needs_attention"}:
             raise CredentialVaultError("invalid connector status")
@@ -572,6 +585,9 @@ class MemoryConnectorVault:
                 certified_tools=tools if status == "ready" else (),
                 certified_manifest_sha256=(
                     certified_manifest_sha256 if status == "ready" else None
+                ),
+                certified_policy_sha256=(
+                    certified_policy_sha256 if status == "ready" else None
                 ),
                 execution_lease=None,
                 execution_lease_expires_at=None,
@@ -637,6 +653,7 @@ class MemoryConnectorVault:
             record = replace(
                 current[1],
                 credential_generation=generation,
+                authorization_generation=_new_generation(),
                 status="needs_attention",
                 updated_at=_utc_now(),
                 tool_count=0,
@@ -647,6 +664,7 @@ class MemoryConnectorVault:
                 proof_version=None,
                 certified_tools=(),
                 certified_manifest_sha256=None,
+                certified_policy_sha256=None,
                 execution_lease=None,
                 execution_lease_expires_at=None,
             )
@@ -666,6 +684,7 @@ class MemoryConnectorVault:
         proof_version: str | None = None,
         certified_tools: tuple[tuple[str, str], ...] = (),
         certified_manifest_sha256: str | None = None,
+        certified_policy_sha256: str | None = None,
     ) -> ConnectionRecord:
         connector_id = _validate_connector_id(connector_id)
         if status not in _CONNECTION_STATUSES or not 0 <= tool_count <= 128:
@@ -678,6 +697,7 @@ class MemoryConnectorVault:
             proof_version=proof_version,
             certified_tools=certified_tools,
             certified_manifest_sha256_value=certified_manifest_sha256,
+            certified_policy_sha256_value=certified_policy_sha256,
         )
         key = (uid, connector_id)
         async with self._lock:
@@ -698,6 +718,9 @@ class MemoryConnectorVault:
                 certified_tools=tools if status == "ready" else (),
                 certified_manifest_sha256=(
                     certified_manifest_sha256 if status == "ready" else None
+                ),
+                certified_policy_sha256=(
+                    certified_policy_sha256 if status == "ready" else None
                 ),
                 execution_lease=None,
                 execution_lease_expires_at=None,
@@ -769,6 +792,7 @@ class GoogleKmsConnectorVault:
             "connector_id": connector_id,
             "credential_kind": secret.kind,
             "credential_generation": _new_generation(),
+            "authorization_generation": _new_generation(),
             "status": "stored_unverified",
             "created_at": now,
             "updated_at": now,
@@ -943,6 +967,8 @@ class GoogleKmsConnectorVault:
                     "proof_version": None,
                     "certified_tools": [],
                     "certified_manifest_sha256": None,
+                    "certified_policy_sha256": None,
+                    "authorization_generation": _new_generation(),
                     "execution_lease": None,
                     "execution_lease_expires_at": None,
                     "updated_at": _utc_now(),
@@ -992,6 +1018,7 @@ class GoogleKmsConnectorVault:
                 "proof_version": None,
                 "certified_tools": [],
                 "certified_manifest_sha256": None,
+                "certified_policy_sha256": None,
                 "execution_lease": lease,
                 "execution_lease_expires_at": expires_at,
                 "updated_at": _utc_now(),
@@ -1020,6 +1047,7 @@ class GoogleKmsConnectorVault:
         proof_version: str | None = None,
         certified_tools: tuple[tuple[str, str], ...] = (),
         certified_manifest_sha256: str | None = None,
+        certified_policy_sha256: str | None = None,
     ) -> ConnectionRecord | None:
         from google.cloud import firestore
 
@@ -1033,6 +1061,7 @@ class GoogleKmsConnectorVault:
             proof_version=proof_version,
             certified_tools=certified_tools,
             certified_manifest_sha256_value=certified_manifest_sha256,
+            certified_policy_sha256_value=certified_policy_sha256,
         )
         connector_id = _validate_connector_id(connector_id)
         document = self.collection.document(_document_id(uid, connector_id))
@@ -1067,6 +1096,9 @@ class GoogleKmsConnectorVault:
                 ),
                 "certified_manifest_sha256": (
                     certified_manifest_sha256 if status == "ready" else None
+                ),
+                "certified_policy_sha256": (
+                    certified_policy_sha256 if status == "ready" else None
                 ),
                 "execution_lease": None,
                 "execution_lease_expires_at": None,
@@ -1185,6 +1217,7 @@ class GoogleKmsConnectorVault:
                 generation = _new_generation()
             updates = {
                 "credential_generation": generation,
+                "authorization_generation": _new_generation(),
                 "status": "needs_attention",
                 "tool_count": 0,
                 "verified_at": None,
@@ -1194,6 +1227,7 @@ class GoogleKmsConnectorVault:
                 "proof_version": None,
                 "certified_tools": [],
                 "certified_manifest_sha256": None,
+                "certified_policy_sha256": None,
                 "execution_lease": None,
                 "execution_lease_expires_at": None,
                 "updated_at": _utc_now(),
@@ -1235,6 +1269,7 @@ class GoogleKmsConnectorVault:
         proof_version: str | None = None,
         certified_tools: tuple[tuple[str, str], ...] = (),
         certified_manifest_sha256: str | None = None,
+        certified_policy_sha256: str | None = None,
     ) -> ConnectionRecord:
         connector_id = _validate_connector_id(connector_id)
         if status not in _CONNECTION_STATUSES or not 0 <= tool_count <= 128:
@@ -1247,6 +1282,7 @@ class GoogleKmsConnectorVault:
             proof_version=proof_version,
             certified_tools=certified_tools,
             certified_manifest_sha256_value=certified_manifest_sha256,
+            certified_policy_sha256_value=certified_policy_sha256,
         )
         document = self.collection.document(_document_id(uid, connector_id))
         snapshot = await document.get()
@@ -1270,6 +1306,7 @@ class GoogleKmsConnectorVault:
                 else []
             ),
             "certified_manifest_sha256": (certified_manifest_sha256 if status == "ready" else None),
+            "certified_policy_sha256": (certified_policy_sha256 if status == "ready" else None),
             "execution_lease": None,
             "execution_lease_expires_at": None,
             "updated_at": now,
@@ -1346,10 +1383,16 @@ def _public_record(record: dict[str, Any]) -> ConnectionRecord:
                 str(record["proof_version"]) if record.get("proof_version") is not None else None
             ),
             credential_generation=str(record.get("credential_generation", "")),
+            authorization_generation=str(record.get("authorization_generation", "")),
             certified_tools=_normalize_certified_tools(record.get("certified_tools", ())),
             certified_manifest_sha256=(
                 str(record["certified_manifest_sha256"])
                 if record.get("certified_manifest_sha256") is not None
+                else None
+            ),
+            certified_policy_sha256=(
+                str(record["certified_policy_sha256"])
+                if record.get("certified_policy_sha256") is not None
                 else None
             ),
             execution_lease=(

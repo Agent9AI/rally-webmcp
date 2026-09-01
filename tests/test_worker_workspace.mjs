@@ -27,6 +27,7 @@ class MemoryD1 {
     this.workspaceJobs = new Map();
     this.workspaceJobByEvent = new Map();
     this.failNextWorkspaceJobInsert = false;
+    this.batchCalls = 0;
   }
 
   withSession() {
@@ -34,6 +35,7 @@ class MemoryD1 {
   }
 
   async batch(statements) {
+    this.batchCalls += 1;
     const snapshot = {
       rows: new Map([...this.rows].map(([key, value]) => [key, { ...value }])),
       messages: new Map([...this.messages].map(([key, value]) => [key, { ...value }])),
@@ -325,7 +327,14 @@ function projection(runId, workspaceId, visibility = "private", artifacts = [], 
   };
 }
 
-async function publishResponse(runId, workspaceId, visibility = "private", artifacts = [], research = null) {
+async function publishResponse(
+  runId,
+  workspaceId,
+  visibility = "private",
+  artifacts = [],
+  research = null,
+  extra = {},
+) {
   return worker.fetch(new Request(
     `https://rally.agent9.dev/v1/console/runs/${runId}`,
     {
@@ -334,7 +343,10 @@ async function publishResponse(runId, workspaceId, visibility = "private", artif
         authorization: `Bearer ${env.POLL_TOKEN}`,
         "content-type": "application/json",
       },
-      body: JSON.stringify(projection(runId, workspaceId, visibility, artifacts, research)),
+      body: JSON.stringify({
+        ...projection(runId, workspaceId, visibility, artifacts, research),
+        ...extra,
+      }),
     },
   ), env, {});
 }
@@ -353,16 +365,69 @@ await publish(
 );
 await publish("r-20260831-other", "another-company");
 
+const authoritySignature = "e".repeat(64);
+const authorityMintRequests = [];
+let nextAuthorityMutation = null;
+
+function utcSeconds(offsetMs) {
+  return new Date(Date.now() + offsetMs).toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
+function runAuthority(runId, uid, workspaceId) {
+  return {
+    schema: "rally.hosted-run-authority/v1",
+    run_id: runId,
+    uid,
+    workspace_id: workspaceId,
+    issued_at: utcSeconds(-1000),
+    expires_at: utcSeconds(10 * 60 * 1000),
+    default_decision: "deny",
+    grants: [{
+      connector_id: "google-workspace",
+      authorization_generation: "1".repeat(32),
+      proof_version: "rally.connection-certification/v1",
+      certified_manifest_sha256: "a".repeat(64),
+      certified_policy_sha256: "b".repeat(64),
+      certified_tools: [["gmail.search_threads", "c".repeat(64)]],
+    }],
+    signature: authoritySignature,
+  };
+}
+
 globalThis.fetch = async (input, init = {}) => {
   const url = input instanceof Request ? input.url : String(input);
-  assert.equal(url, "https://rally-control-plane-1000134647783.us-east1.run.app/v1/me");
   const headers = new Headers(input instanceof Request ? input.headers : init.headers);
   const session = headers.get("x-rally-session") || "";
-  return Response.json({
-    uid: session.startsWith("a") ? "admin-one" : "admin-two",
-    email: session.startsWith("a") ? "owner@agent9.dev" : "owner@other.dev",
-    workspace_id: session.startsWith("a") ? "agent9-rally" : "another-company",
-  });
+  const uid = session.startsWith("a") ? "admin-one" : "admin-two";
+  const workspaceId = session.startsWith("a") ? "agent9-rally" : "another-company";
+  if (url.endsWith("/v1/me")) {
+    return Response.json({
+      uid,
+      email: session.startsWith("a") ? "owner@agent9.dev" : "owner@other.dev",
+      workspace_id: workspaceId,
+    });
+  }
+  if (url.endsWith("/v1/run-authorities")) {
+    const method = input instanceof Request ? input.method : init.method;
+    const raw = input instanceof Request ? await input.clone().text() : String(init.body || "");
+    const body = JSON.parse(raw);
+    let authority = runAuthority(body.run_id, uid, body.workspace_id);
+    if (nextAuthorityMutation) {
+      const mutate = nextAuthorityMutation;
+      nextAuthorityMutation = null;
+      authority = mutate(authority);
+    }
+    authorityMintRequests.push({
+      method,
+      body,
+      content_type: headers.get("content-type"),
+      authorization: headers.get("authorization"),
+      session,
+      authority,
+    });
+    return Response.json({ authority });
+  }
+  throw new Error(`unexpected upstream request: ${url}`);
 };
 
 const agent9Headers = { "x-rally-session": "a".repeat(43) };
@@ -664,6 +729,58 @@ const invalidResearchMode = await worker.fetch(jobRequest({
 assert.equal(invalidResearchMode.status, 400);
 assert.equal(env.INBOX.messages.size, 0);
 
+const invalidAuthorityCases = [
+  ["run", (authority) => ({ ...authority, run_id: "r-20260831-wrong-authority" })],
+  ["uid", (authority) => ({ ...authority, uid: "admin-two" })],
+  ["workspace", (authority) => ({ ...authority, workspace_id: "another-company" })],
+  ["shape", (authority) => ({ ...authority, credential: "must-never-be-accepted" })],
+  ["grant-shape", (authority) => ({
+    ...authority,
+    grants: [{ ...authority.grants[0], refresh_token: "must-never-be-accepted" }],
+  })],
+  ["generation", (authority) => ({
+    ...authority,
+    grants: [{ ...authority.grants[0], authorization_generation: "stale" }],
+  })],
+  ["grant-order", (authority) => ({
+    ...authority,
+    grants: [
+      authority.grants[0],
+      { ...authority.grants[0], connector_id: "github", authorization_generation: "2".repeat(32) },
+    ],
+  })],
+  ["tool-order", (authority) => ({
+    ...authority,
+    grants: [{
+      ...authority.grants[0],
+      certified_tools: [["z.last", "c".repeat(64)], ["a.first", "d".repeat(64)]],
+    }],
+  })],
+  ["expired", (authority) => ({
+    ...authority,
+    issued_at: utcSeconds(-2 * 60 * 1000),
+    expires_at: utcSeconds(-60 * 1000),
+  })],
+  ["timestamp", (authority) => ({ ...authority, issued_at: "2026-02-31T00:00:00Z" })],
+  ["signature", (authority) => ({ ...authority, signature: "not-a-signature" })],
+];
+for (const [label, mutate] of invalidAuthorityCases) {
+  const batchesBefore = env.INBOX.batchCalls;
+  const mintsBefore = authorityMintRequests.length;
+  nextAuthorityMutation = mutate;
+  const invalidAuthority = await worker.fetch(jobRequest({
+    title: `Reject invalid authority ${label}`,
+    goal: "A malformed or misbound authority must never reach durable storage.",
+  }, `manual-job-invalid-authority-${label}-0001`), env, {});
+  assert.equal(invalidAuthority.status, 502);
+  assert.equal(authorityMintRequests.length, mintsBefore + 1);
+  assert.equal(env.INBOX.batchCalls, batchesBefore);
+  assert.equal(env.INBOX.messages.size, 0);
+  assert.equal(env.INBOX.messageByEvent.size, 0);
+  assert.equal(env.INBOX.workspaceJobs.size, 0);
+  assert.equal(env.INBOX.workspaceJobByEvent.size, 0);
+}
+
 const standardEnv = { ...env, INBOX: new MemoryD1(), ARTIFACTS: new MemoryR2() };
 const standardJob = {
   title: "Keep the standard fingerprint stable",
@@ -680,7 +797,9 @@ const standardReplay = await worker.fetch(jobRequest(
 ), standardEnv, {});
 assert.deepEqual(await standardReplay.json(), await standardAccepted.json());
 const standardEnvelope = JSON.parse([...standardEnv.INBOX.messages.values()][0].payload);
+assert.equal(standardEnvelope.schema_version, 2);
 assert.equal(Object.hasOwn(standardEnvelope.job, "research_mode"), false);
+assert.equal(standardEnvelope.requester.user_id, "admin-one");
 
 const researchEnv = { ...env, INBOX: new MemoryD1(), ARTIFACTS: new MemoryR2() };
 const researchJob = {
@@ -707,7 +826,9 @@ const researchAccepted = await worker.fetch(jobRequest(
 ), researchEnv, {});
 assert.equal(researchAccepted.status, 202);
 const researchEnvelope = JSON.parse([...researchEnv.INBOX.messages.values()][0].payload);
+assert.equal(researchEnvelope.schema_version, 2);
 assert.equal(researchEnvelope.job.research_mode, "ruflo");
+assert.equal(researchEnvelope.authority.run_id, researchEnvelope.run_id);
 const researchDowngrade = await worker.fetch(jobRequest(
   { title: researchJob.title, goal: researchJob.goal, research_mode: "standard" },
   "manual-job-ruflo-profile-0001",
@@ -729,9 +850,20 @@ const submittedJob = {
   source_run_id: "r-20260831-agent9",
   second_wind: true,
 };
+const mintCountBeforeAccepted = authorityMintRequests.length;
 const accepted = await worker.fetch(jobRequest(submittedJob), env, {});
 assert.equal(accepted.status, 202);
 const acceptedBody = await accepted.json();
+assert.equal(authorityMintRequests.length, mintCountBeforeAccepted + 1);
+const acceptedMint = authorityMintRequests.at(-1);
+assert.equal(acceptedMint.method, "POST");
+assert.deepEqual(acceptedMint.body, {
+  run_id: acceptedBody.run_id,
+  workspace_id: "agent9-rally",
+});
+assert.equal(acceptedMint.content_type, "application/json");
+assert.equal(acceptedMint.authorization, null);
+assert.equal(acceptedMint.session, "a".repeat(43));
 assert.deepEqual(Object.keys(acceptedBody).sort(), ["accepted_at", "run_id", "status"]);
 assert.match(acceptedBody.run_id, /^r-\d{8}-[0-9a-f-]{36}$/);
 assert.equal(acceptedBody.status, "accepted");
@@ -741,20 +873,27 @@ assert.equal(env.INBOX.messages.size, 1);
 const storedMessage = [...env.INBOX.messages.values()][0];
 const storedEnvelope = JSON.parse(storedMessage.payload);
 assert.equal(storedEnvelope.source, "dashboard");
+assert.equal(storedEnvelope.schema_version, 2);
 assert.equal(storedEnvelope.run_id, acceptedBody.run_id);
 assert.deepEqual(storedEnvelope.job, submittedJob);
-assert.deepEqual(storedEnvelope.authority, {
+assert.deepEqual(storedEnvelope.requester, {
   user_id: "admin-one",
   email: "owner@agent9.dev",
   workspace_id: "agent9-rally",
 });
+assert.deepEqual(storedEnvelope.authority, acceptedMint.authority);
+assert.equal(storedEnvelope.authority.signature, authoritySignature);
+assert.match(storedMessage.payload, /rally\.hosted-run-authority\/v1/);
 assert.doesNotMatch(storedMessage.payload, /another-company/);
+assert.doesNotMatch(JSON.stringify(acceptedBody), /rally\.hosted-run-authority|signature/);
 assert.equal(env.INBOX.workspaceJobs.size, 1);
 const storedJob = env.INBOX.workspaceJobs.get(acceptedBody.run_id);
 assert.equal(storedJob.title, submittedJob.title);
 assert.equal(storedJob.source_run_id, submittedJob.source_run_id);
 assert.equal(storedJob.superseded_at, null);
 assert.equal(storedJob.goal, undefined);
+assert.equal(storedJob.requester, undefined);
+assert.equal(storedJob.authority, undefined);
 
 const queuedList = await worker.fetch(new Request(
   "https://rally.agent9.dev/v1/workspace/runs",
@@ -795,8 +934,13 @@ assert.deepEqual(queuedDetailBody.progress, { done: 0, total: 0 });
 assert.deepEqual(queuedDetailBody.timeline, []);
 assert.equal(queuedDetailBody.source_run_id, submittedJob.source_run_id);
 assert.equal(queuedDetailBody.goal, undefined);
+assert.equal(queuedDetailBody.requester, undefined);
 assert.equal(queuedDetailBody.authority, undefined);
 assert.equal(queuedDetailBody.request_fingerprint, undefined);
+assert.doesNotMatch(
+  JSON.stringify(queuedDetailBody),
+  /rally\.hosted-run-authority|signature|owner@agent9\.dev/,
+);
 
 const otherWorkspaceList = await worker.fetch(new Request(
   "https://rally.agent9.dev/v1/workspace/runs",
@@ -811,6 +955,7 @@ const replay = await worker.fetch(jobRequest(submittedJob), env, {});
 assert.equal(replay.status, 202);
 assert.deepEqual(await replay.json(), acceptedBody);
 assert.equal(env.INBOX.messages.size, 1);
+assert.equal(authorityMintRequests.length, mintCountBeforeAccepted + 1);
 
 const idempotencyConflict = await worker.fetch(jobRequest({
   ...submittedJob,
@@ -818,6 +963,7 @@ const idempotencyConflict = await worker.fetch(jobRequest({
 }), env, {});
 assert.equal(idempotencyConflict.status, 409);
 assert.equal(env.INBOX.messages.size, 1);
+assert.equal(authorityMintRequests.length, mintCountBeforeAccepted + 1);
 
 await publish(acceptedBody.run_id, "agent9-rally");
 assert.match(env.INBOX.workspaceJobs.get(acceptedBody.run_id).superseded_at, /^\d{4}-\d{2}-\d{2}T/);
@@ -896,12 +1042,44 @@ assert.equal(rotatedBearerDetail.status, 200);
 const promotedReplay = await worker.fetch(jobRequest(submittedJob), env, {});
 assert.equal(promotedReplay.status, 202);
 assert.deepEqual(await promotedReplay.json(), acceptedBody);
+assert.equal(authorityMintRequests.length, mintCountBeforeAccepted + 1);
 const promotedConflict = await worker.fetch(jobRequest({
   ...submittedJob,
   goal: "The idempotency receipt still rejects a different job after promotion.",
 }), env, {});
 assert.equal(promotedConflict.status, 409);
 assert.equal(env.INBOX.messages.size, 0);
+assert.equal(authorityMintRequests.length, mintCountBeforeAccepted + 1);
+
+// Runner projections and polluted legacy rows cannot expose the signed mint.
+const authorityProjection = await publishResponse(
+  acceptedBody.run_id,
+  "agent9-rally",
+  "public",
+  [],
+  null,
+  { authority: storedEnvelope.authority, requester: storedEnvelope.requester },
+);
+assert.equal(authorityProjection.status, 200);
+const projectedRecord = env.INBOX.rows.get(acceptedBody.run_id);
+assert.doesNotMatch(
+  projectedRecord.payload,
+  /rally\.hosted-run-authority|signature|owner@agent9\.dev/,
+);
+projectedRecord.payload = JSON.stringify({
+  ...JSON.parse(projectedRecord.payload),
+  requester: storedEnvelope.requester,
+  authority: storedEnvelope.authority,
+  request_fingerprint: "d".repeat(64),
+});
+const authorityPublicDetail = await worker.fetch(new Request(
+  `https://rally.agent9.dev/v1/console/runs/${acceptedBody.run_id}`,
+), env, {});
+assert.equal(authorityPublicDetail.status, 200);
+const authorityPublicBody = await authorityPublicDetail.json();
+assert.equal(authorityPublicBody.authority, undefined);
+assert.equal(authorityPublicBody.requester, undefined);
+assert.equal(authorityPublicBody.request_fingerprint, undefined);
 
 async function signedWebhook(payload, eventId) {
   const raw = JSON.stringify(payload);

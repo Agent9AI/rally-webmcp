@@ -270,6 +270,13 @@ data "google_secret_manager_secret" "magic_link_signing_key" {
   secret_id = "rally-magic-link-signing-key"
 }
 
+data "google_secret_manager_secret" "run_authority_signing_key" {
+  count = var.deploy_control_plane ? 1 : 0
+
+  project   = var.project_id
+  secret_id = "rally-run-authority-signing-key"
+}
+
 resource "google_secret_manager_secret_iam_member" "resend_control_plane" {
   count = var.deploy_control_plane ? 1 : 0
 
@@ -284,6 +291,15 @@ resource "google_secret_manager_secret_iam_member" "magic_link_control_plane" {
 
   project   = var.project_id
   secret_id = data.google_secret_manager_secret.magic_link_signing_key[0].secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.control_plane.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "run_authority_control_plane" {
+  count = var.deploy_control_plane ? 1 : 0
+
+  project   = var.project_id
+  secret_id = data.google_secret_manager_secret.run_authority_signing_key[0].secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.control_plane.email}"
 }
@@ -607,6 +623,23 @@ resource "google_cloud_run_v2_service" "control_plane" {
         name  = "RALLY_ADMIN_RETURN_URL"
         value = "https://rally.agent9.dev/admin/"
       }
+      env {
+        name  = "RALLY_RUNNER_AUDIENCE"
+        value = "https://${var.control_plane_service_name}-${data.google_project.current.number}.${var.region}.run.app"
+      }
+      env {
+        name  = "RALLY_RUNNER_SERVICE_ACCOUNT"
+        value = google_service_account.local_invoker.email
+      }
+      env {
+        name = "RALLY_RUN_AUTHORITY_SIGNING_SECRET"
+        value_source {
+          secret_key_ref {
+            secret  = data.google_secret_manager_secret.run_authority_signing_key[0].secret_id
+            version = "latest"
+          }
+        }
+      }
 
       startup_probe {
         initial_delay_seconds = 2
@@ -638,9 +671,20 @@ resource "google_cloud_run_v2_service" "control_plane" {
     google_secret_manager_secret_iam_member.workspace_oauth_control_plane,
     google_secret_manager_secret_iam_member.resend_control_plane,
     google_secret_manager_secret_iam_member.magic_link_control_plane,
+    google_secret_manager_secret_iam_member.run_authority_control_plane,
     google_pubsub_topic_iam_member.control_plane_magic_link_publisher,
     google_project_iam_member.control_plane,
   ]
+}
+
+resource "google_cloud_run_v2_service_iam_member" "control_plane_runner" {
+  count = var.deploy_control_plane ? 1 : 0
+
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.control_plane[0].name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.local_invoker.email}"
 }
 
 resource "google_cloud_run_v2_service_iam_member" "control_plane_public" {

@@ -4,19 +4,19 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Rally v2 — Accountable AI teammates, now WebMCP-ready</title>
-    <meta name="description" content="Give your company accountable AI teammates employees can email like coworkers. Rally v2 adds bounded WebMCP tools so browser agents and people can stage and review the same visible work.">
+    <meta name="description" content="Give your company accountable AI teammates employees can email like coworkers. Rally v2 lets ChatGPT start and follow real Rally jobs from the signed-in workspace.">
     <meta property="og:title" content="Rally v2 — Accountable AI teammates, now WebMCP-ready.">
-    <meta property="og:description" content="Email an accountable AI teammate, or work beside a browser agent through seven bounded WebMCP tools. Rally keeps consequential actions human-approved and receipted.">
+    <meta property="og:description" content="Email an accountable AI teammate, or use ChatGPT in Rally’s workspace to start a job, follow its agents, and open the result.">
     <meta property="og:type" content="website">
-    <meta property="og:url" content="https://rally-webmcp.pages.dev/">
-    <meta property="og:image" content="https://rally-webmcp.pages.dev/og-card.png">
+    <meta property="og:url" content="https://rally.agent9.dev/v2/">
+    <meta property="og:image" content="https://rally.agent9.dev/v2/og-card.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
     <meta property="og:image:alt" content="Rally: accountable AI teammates, where work already happens.">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="theme-color" content="#ffffff">
     <meta name="rally-console-api" content="https://rally.agent9.dev/v1/console">
-    <link rel="canonical" href="https://rally-webmcp.pages.dev/">
+    <link rel="canonical" href="https://rally.agent9.dev/v2/">
     <link rel="icon" href="rally-symbol.png" type="image/png">
     <link rel="stylesheet" href="styles.css?v=20260901a">
   </head>
@@ -27,7 +27,7 @@
       <span class="google-dots" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
       <span>Built for the WebMCP Challenge</span>
       <span class="event-separator" aria-hidden="true"></span>
-      <strong><button type="button" data-open-webmcp data-webmcp-open-workflow="song">Rally v2 · 7 bounded page tools →</button></strong>
+      <strong><a href="#webmcp">Rally v2 · ChatGPT can use Rally →</a></strong>
     </div>
 
     <header class="site-header" data-header>
@@ -176,7 +176,7 @@
               </button>
               <nav>
                 <a class="active" href="#demo"><span class="rail-icon">▤</span><span>Runs</span></a>
-                <button class="webmcp-rail-action" type="button" data-open-webmcp data-webmcp-open-workflow="song"><span class="rail-icon">W</span><span>WebMCP</span></button>
+                <a href="#webmcp"><span class="rail-icon">W</span><span>WebMCP</span></a>
                 <a href="#proof"><span class="rail-icon">✓</span><span>Reviews</span></a>
                 <a href="#how"><span class="rail-icon">◇</span><span>Agents</span></a>
                 <a href="#trust"><span class="rail-icon">⌾</span><span>Policy</span></a>
@@ -216,27 +216,25 @@
       <section class="webmcp-sprint" id="webmcp" aria-labelledby="webmcp-title">
         <div class="webmcp-sprint-copy">
           <p class="eyebrow">New in Rally v2</p>
-          <h2 id="webmcp-title">Ask Rally on the page.</h2>
-          <p>A supported browser agent can now prepare real Rally work through named tools, place the result in fields you can inspect and change, then review your exact revision. It cannot generate, publish, connect, or approve on your behalf.</p>
-          <span class="webmcp-v2-runtime" data-webmcp-v2-status role="status" aria-live="polite"><i></i><span><b>Checking WebMCP</b><small>Every task still works from the page controls</small></span></span>
-          <p class="webmcp-sprint-boundary"><b>Clear protocol roles:</b> WebMCP shares this page with a browser agent. Rally's governed MCP gateway reaches approved business tools. A2A v1.0 carries bounded tasks to outside agents.</p>
+          <h2 id="webmcp-title">Start and follow a Rally job with ChatGPT.</h2>
+          <p>In Rally’s signed-in workspace, ChatGPT can fill the real job form, start the job after you confirm, and open the run or result you ask for. Rally’s agents still create the work, check it, and show their evidence.</p>
+          <span class="webmcp-v2-runtime" data-webmcp-v2-status role="status" aria-live="polite"><i></i><span><b>Checking this browser</b><small>The live Rally workspace also works without ChatGPT</small></span></span>
+          <details class="webmcp-plain-explainer"><summary>How does this fit together?</summary><p>WebMCP lets ChatGPT use Rally’s page. Rally’s own agents do the work. Services such as n8n, GitHub, and Cloudflare are tools those agents may use only after you connect them.</p></details>
+          <a class="button button-primary webmcp-workspace-cta" href="admin/?view=work">Open Rally workspace</a>
         </div>
-        <div class="webmcp-preset-grid" role="group" aria-label="Rally WebMCP task presets">
-          <button class="webmcp-preset" type="button" data-open-webmcp data-webmcp-open-workflow="song">
+        <div class="webmcp-preset-grid" aria-label="Rally job examples">
+          <article class="webmcp-preset">
             <span class="webmcp-preset-icon" aria-hidden="true">♫</span>
-            <span><small>Original song</small><b>Commission the WebMCP story with Lyria.</b><em>Stage a visible brief · no audio generated</em></span>
-            <span aria-hidden="true">→</span>
-          </button>
-          <button class="webmcp-preset" type="button" data-open-webmcp data-webmcp-open-workflow="insights">
+            <span><small>Real Rally job</small><b>Make the WebMCP launch song.</b><em>A writer shapes the brief, Lyria creates the track, and another Rally agent checks the MP3.</em></span>
+          </article>
+          <article class="webmcp-preset">
             <span class="webmcp-preset-icon" aria-hidden="true">▤</span>
-            <span><small>Insights draft</small><b>Prepare an Agent9 article beside the editor.</b><em>Human-approved n8n route · draft only</em></span>
-            <span aria-hidden="true">→</span>
-          </button>
-          <button class="webmcp-preset" type="button" data-open-webmcp data-webmcp-open-workflow="connector">
-            <span class="webmcp-preset-icon" aria-hidden="true">⌁</span>
-            <span><small>MCP onboarding</small><b>Plan one governed connector admission.</b><em>Allowlisted profile · no connection started</em></span>
-            <span aria-hidden="true">→</span>
-          </button>
+            <span><small>Real Rally job</small><b>Write an Agent9 Insight from finished work.</b><em>ChatGPT shows you the completed job and fills a new writing request from what you approved. A different Rally agent checks the important claims.</em></span>
+          </article>
+          <article class="webmcp-preset">
+            <span class="webmcp-preset-icon" aria-hidden="true">↻</span>
+            <span><small>Live Rally job</small><b>See why a job stopped.</b><em>ChatGPT opens the job. If a worker is stuck, Rally can give that step to another agent without starting over.</em></span>
+          </article>
         </div>
       </section>
 
@@ -405,8 +403,8 @@
           <details><summary>What stays private?</summary><p>Commissioner identity, worktree paths, mail IDs, raw prompts, credentials, and cloud request keys never enter the public console record.</p></details>
           <details><summary>When do administrators connect Gemini, Claude, OpenAI, or Grok?</summary><p>AI workforce authorization is separate from company systems. The current pilot uses provider-approved identities on its controlled execution host. The self-service design starts each provider’s official OAuth or device-code flow on a user-bound host, with an existing API key offered as an alternative route. Rally never asks for a consumer password or copies a browser session cookie.</p></details>
           <details><summary>Are AI and business-system connections shared between users?</summary><p>No. Model identities, company-system grants, and run authority are separate. Rally namespaces each user’s approved systems and tools, then freezes only the commissioned scope into that run.</p></details>
-          <details><summary>Can a browser agent use Rally directly?</summary><p>Yes. Rally exposes seven bounded WebMCP tools in supported browsers: search the public run index, inspect a verification record, prepare a governed job, stage an original Lyria song brief, stage an Agent9 Insights draft, stage governed MCP onboarding, and review the exact human-edited draft. The agent shares visible page state with you, but it cannot submit, generate, publish, connect, grant access, or bypass your decision.</p></details>
-          <details><summary>Can Rally connect a custom MCP server?</summary><p>Not through an arbitrary URL box. Custom remote MCP is a Labs path that must pass HTTPS and network admission, OAuth origin checks, bounded discovery, schema fingerprint review, exact tool policy, payload ceilings, and one-time approval for writes. WebMCP is complementary: Rally uses it for human-present browser collaboration, while asynchronous jobs continue through the governed server-side gateway.</p></details>
+          <details><summary>Can ChatGPT use Rally directly?</summary><p>Yes. In Rally’s signed-in workspace, ChatGPT can fill the real job form, start it after confirmation, find your jobs, open a run, and take you to a connection. Rally’s agents—not ChatGPT—still perform and check the work.</p></details>
+          <details><summary>How does Rally connect a business service?</summary><p>Open Connections and choose a supported service such as n8n, GitHub, or Cloudflare. You complete the provider sign-in yourself. Rally tests the exact actions it may use before any agent receives access.</p></details>
           <details><summary>What does “give Rally a job” mean?</summary><p>Ask for a finished professional outcome—such as a sourced market briefing, an executive presentation, a customer-risk review, or a launch plan—then grant only the sources, limits, and approval rules that outcome needs.</p></details>
           <details><summary>Are the business connectors live?</summary><p>The governed gateway and all ten provider adapters are implemented. BigQuery has completed a real authenticated handshake with Google’s official MCP endpoint and discovered six tools. The other accounts are intentionally shown as disconnected until each user completes provider setup, authentication, live discovery, and an exact safe preset. Rally never turns “adapter exists” into “customer account connected.”</p></details>
         </div>
@@ -423,7 +421,7 @@
         </a>
         <a class="webmcp-trust-badge" href="https://github.com/webmachinelearning/webmcp">
           <span class="webmcp-mark" aria-hidden="true"><svg viewBox="0 0 32 32"><rect x="3.5" y="5" width="25" height="22" rx="5"/><path d="M4 11h24M10 8h.1M7 8h.1M13 8h.1M11 19l3 3 7-8"/></svg></span>
-          <span><b>WebMCP enabled</b><small>7 browser tools · human-confirmed</small></span>
+          <span><b>Works with ChatGPT</b><small>Start jobs · open runs · see results</small></span>
         </a>
       </div>
     </aside>
@@ -442,24 +440,6 @@
       <div class="setup-tabs" role="tablist" aria-label="Launch options"><button class="is-active" type="button" role="tab" aria-selected="true" data-setup-tab="managed">Managed setup</button><button type="button" role="tab" aria-selected="false" data-setup-tab="self">Self-hosted</button></div>
       <section class="setup-panel is-active" data-setup-panel="managed">
         <div class="setup-promise"><b>Start with email. Connections are optional.</b><span>Commission useful work from the request and attachments now, then add approved company context whenever you are ready.</span></div>
-        <div class="webmcp-ready" data-webmcp-status><span>WebMCP agent-ready</span><p>Your browser agent can prepare this visible draft with you. It cannot send, submit, or widen authority.</p></div>
-        <section class="webmcp-task-receipt" data-webmcp-task-receipt hidden aria-live="polite">
-          <header>
-            <div><span class="webmcp-task-mark" aria-hidden="true">♫</span><div><p>Shared creative task</p><h3 data-webmcp-task-title>Lyria challenge song staged</h3></div></div>
-            <span class="webmcp-task-state" data-webmcp-task-state>Awaiting review</span>
-          </header>
-          <div class="webmcp-task-facts">
-            <div><span>Generator</span><b data-webmcp-task-model>Lyria 3 Pro</b></div>
-            <div><span>Artifact</span><b data-webmcp-task-artifact>Original MP3 song</b></div>
-            <div><span>Authority</span><b>Human confirmation</b></div>
-            <div><span>Approval</span><b>Different model family</b></div>
-          </div>
-          <div class="webmcp-collaboration-trace">
-            <header><b>WebMCP collaboration trail</b><span>Page-local · no browser history</span></header>
-            <ol data-webmcp-trace></ol>
-          </div>
-          <p data-webmcp-task-note>The agent prepared this brief beside you. Edit the outcome below, then ask it to review the visible task before you decide whether to commission it.</p>
-        </section>
         <div class="job-draft-fields" data-job-draft>
           <label><span>Company</span><input type="text" maxlength="120" autocomplete="organization" placeholder="Your company" data-job-company></label>
           <label><span>Team</span><input type="text" maxlength="120" autocomplete="organization-title" placeholder="Team or function" data-job-team></label>
@@ -482,88 +462,6 @@
       </section>
     </dialog>
 
-    <dialog class="webmcp-work-dialog" data-webmcp-dialog aria-labelledby="webmcp-dialog-title">
-      <button class="dialog-close" type="button" data-close-webmcp aria-label="Close browser task">×</button>
-      <div class="webmcp-dialog-heading">
-        <img class="brand-mark large" src="rally-symbol.png" alt="">
-        <div>
-          <p class="eyebrow">Rally v2 · browser task</p>
-          <h2 id="webmcp-dialog-title">Prepare the work together.</h2>
-          <p>Rally gives the browser agent named actions and gives you the editable result. Staging and review stay on this page; every external effect remains a separate human decision.</p>
-        </div>
-      </div>
-      <div class="webmcp-dialog-tabs" role="tablist" aria-label="Rally WebMCP task presets">
-        <button class="is-active" id="webmcp-song-tab" type="button" role="tab" aria-selected="true" aria-controls="webmcp-song-panel" tabindex="0" data-webmcp-workflow="song"><span aria-hidden="true">♫</span><span><b>Original song</b><small>Lyria brief</small></span></button>
-        <button id="webmcp-insights-tab" type="button" role="tab" aria-selected="false" aria-controls="webmcp-insights-panel" tabindex="-1" data-webmcp-workflow="insights"><span aria-hidden="true">▤</span><span><b>Insights draft</b><small>EmDash route</small></span></button>
-        <button id="webmcp-connector-tab" type="button" role="tab" aria-selected="false" aria-controls="webmcp-connector-panel" tabindex="-1" data-webmcp-workflow="connector"><span aria-hidden="true">⌁</span><span><b>MCP onboarding</b><small>Gateway plan</small></span></button>
-      </div>
-      <div class="webmcp-dialog-layout">
-        <div class="webmcp-v2-stage">
-          <div class="webmcp-turn-strip" aria-label="Browser collaboration sequence"><span><i>1</i> Agent stages</span><b aria-hidden="true">→</b><span><i>2</i> Human edits</span><b aria-hidden="true">→</b><span><i>3</i> Agent reviews</span><b aria-hidden="true">→</b><span><i>4</i> Human decides</span></div>
-        <section class="webmcp-workflow-panel" id="webmcp-song-panel" role="tabpanel" aria-labelledby="webmcp-song-tab" data-webmcp-panel="song">
-          <div class="webmcp-panel-heading"><div><p>Showcase 01 · Google Lyria 3 Pro</p><h3>Tell WebMCP's story in an original song.</h3><span>Warm West Coast storytelling, exact protocol roles, and a chorus built around visible human authority—without imitating any artist.</span></div><span class="status-chip review">Not generated</span></div>
-          <div class="webmcp-editor-grid">
-            <div class="webmcp-brief-fields">
-              <label for="webmcp-song-direction"><span>Story direction</span><small>20–600 characters</small></label>
-              <textarea id="webmcp-song-direction" rows="4" maxlength="600" data-webmcp-song-direction data-webmcp-track="song" data-webmcp-field-label="song direction">A browser agent and a person build the launch together on one visible page: Rally prepares each move, the person reshapes the story, and nothing crosses the line until they say so.</textarea>
-              <label for="webmcp-song-hook"><span>Original hook seed</span><small>Optional</small></label>
-              <input id="webmcp-song-hook" type="text" maxlength="220" value="Same page, clear hands — Rally the work, I make the call." data-webmcp-song-hook data-webmcp-track="song" data-webmcp-field-label="song hook">
-              <div class="webmcp-inline-fields">
-                <label for="webmcp-song-style"><span>Style</span><select id="webmcp-song-style" data-webmcp-song-style data-webmcp-track="song" data-webmcp-field-label="song style"><option value="west-coast-storytelling" selected>West Coast story</option><option value="soulful-hip-hop">Soulful hip-hop</option><option value="electro-soul">Electro-soul</option><option value="electro-funk">Electro-funk</option><option value="indie-electronic">Indie electronic</option><option value="cinematic-pop">Cinematic pop</option></select></label>
-                <label for="webmcp-song-duration"><span>Length</span><select id="webmcp-song-duration" data-webmcp-song-duration data-webmcp-track="song" data-webmcp-field-label="song length"><option value="60">60 sec</option><option value="72" selected>72 sec</option><option value="84">84 sec</option><option value="90">90 sec</option></select></label>
-              </div>
-              <div class="webmcp-form-actions"><button class="button button-primary button-small" type="button" data-webmcp-stage="song">Stage Lyria brief</button><button class="button button-outline button-small" type="button" data-webmcp-review="song">Review visible draft</button></div>
-            </div>
-            <div class="webmcp-artifact-editor"><div><label for="webmcp-song-brief">Human-editable commission</label><span>UNTRUSTED PAGE CONTENT</span></div><textarea id="webmcp-song-brief" rows="18" maxlength="5000" data-webmcp-song-brief data-webmcp-track="song" data-webmcp-field-label="visible song brief">Stage this showcase to prepare the complete Lyria commission. No audio will be generated.</textarea></div>
-          </div>
-        </section>
-
-        <section class="webmcp-workflow-panel" id="webmcp-insights-panel" role="tabpanel" aria-labelledby="webmcp-insights-tab" data-webmcp-panel="insights" hidden>
-          <div class="webmcp-panel-heading"><div><p>Showcase 02 · Agent9 Insights</p><h3>Draft beside the editor. Never silently publish.</h3><span>After a separate human approval, Rally may use one allowlisted n8n MCP workflow to create an EmDash <code>journal</code> draft on Cloudflare Workers + D1.</span></div><span class="status-chip review">Not published</span></div>
-          <div class="webmcp-route-strip" aria-label="Future human-approved article route"><span><b>WebMCP</b><small>visible draft</small></span><i>→</i><span><b>Human</b><small>explicit approval</small></span><i>→</i><span><b>Rally + n8n MCP</b><small>allowlisted workflow</small></span><i>→</i><span><b>EmDash journal</b><small>draft only</small></span></div>
-          <div class="webmcp-editor-grid">
-            <div class="webmcp-brief-fields">
-              <label for="webmcp-insights-angle"><span>Editorial angle</span><small>20–360 characters</small></label>
-              <textarea id="webmcp-insights-angle" rows="4" maxlength="360" data-webmcp-insights-angle data-webmcp-track="insights" data-webmcp-field-label="article angle">Why the best browser-agent interface is a page where the person can inspect, revise, and approve the same semantic work the agent sees.</textarea>
-              <label for="webmcp-insights-audience"><span>Audience</span></label>
-              <select id="webmcp-insights-audience" data-webmcp-insights-audience data-webmcp-track="insights" data-webmcp-field-label="article audience"><option value="builders" selected>AI product builders</option><option value="operators">Business operators</option><option value="security-leaders">Security leaders</option></select>
-              <label for="webmcp-insights-closing"><span>Closing thought</span><small>Optional</small></label>
-              <input id="webmcp-insights-closing" type="text" maxlength="180" value="Put the agent's controls where the person can see them." data-webmcp-insights-closing data-webmcp-track="insights" data-webmcp-field-label="article closing thought">
-              <div class="webmcp-form-actions"><button class="button button-primary button-small" type="button" data-webmcp-stage="insights">Stage Insights draft</button><button class="button button-outline button-small" type="button" data-webmcp-review="insights">Review visible draft</button></div>
-            </div>
-            <div class="webmcp-artifact-editor webmcp-article-editor"><label for="webmcp-insights-title">Title</label><input id="webmcp-insights-title" type="text" maxlength="140" value="Waiting for a staged Agent9 Insight" data-webmcp-insights-title data-webmcp-track="insights" data-webmcp-field-label="article title"><label for="webmcp-insights-deck">Deck</label><textarea id="webmcp-insights-deck" rows="2" maxlength="280" data-webmcp-insights-deck data-webmcp-track="insights" data-webmcp-field-label="article deck">The staged summary will stay editable here.</textarea><div><label for="webmcp-insights-body">Human-editable article</label><span>NOT SENT TO EMDASH</span></div><textarea id="webmcp-insights-body" rows="13" maxlength="7000" data-webmcp-insights-body data-webmcp-track="insights" data-webmcp-field-label="article body">Stage this showcase to prepare the complete WebMCP article draft.</textarea></div>
-          </div>
-        </section>
-
-        <section class="webmcp-workflow-panel" id="webmcp-connector-panel" role="tabpanel" aria-labelledby="webmcp-connector-tab" data-webmcp-panel="connector" hidden>
-          <div class="webmcp-panel-heading"><div><p>Showcase 03 · Governed MCP gateway</p><h3>Onboard capability, not an arbitrary URL.</h3><span>WebMCP is the shared browser surface. Rally's server-side gateway separately governs MCP transport, credentials, discovery, tool policy, and execution.</span></div><span class="status-chip review">Not connected</span></div>
-          <div class="webmcp-boundary-note"><span>≠</span><p><b>WebMCP does not connect remote MCP servers.</b> It lets this page expose tools to a browser agent. Rally's gateway handles approved servers off the page.</p></div>
-          <div class="webmcp-editor-grid">
-            <div class="webmcp-brief-fields">
-              <label for="webmcp-connector-profile"><span>Allowlisted profile</span></label>
-              <select id="webmcp-connector-profile" data-webmcp-connector-profile data-webmcp-track="connector" data-webmcp-field-label="connector profile"><option value="n8n-agent9-insights" selected>n8n · Agent9 Insights</option><option value="cloudflare-observability">Cloudflare · observability</option><option value="github-repository">GitHub · repository reads</option><option value="google-workspace">Google Workspace · knowledge gateway</option></select>
-              <label for="webmcp-connector-access"><span>Proposed access</span></label>
-              <select id="webmcp-connector-access" data-webmcp-connector-access data-webmcp-track="connector" data-webmcp-field-label="connector access"><option value="read-only">Read only</option><option value="read-with-approved-writes" selected>Read + approved writes</option></select>
-              <label for="webmcp-connector-purpose"><span>Business purpose</span><small>20–280 characters</small></label>
-              <textarea id="webmcp-connector-purpose" rows="4" maxlength="280" data-webmcp-connector-purpose data-webmcp-track="connector" data-webmcp-field-label="connector purpose">Create one EmDash journal draft for a human-approved Agent9 Insights article through a fixed n8n workflow; never publish or widen its tools.</textarea>
-              <div class="webmcp-form-actions"><button class="button button-primary button-small" type="button" data-webmcp-stage="connector">Stage admission plan</button><button class="button button-outline button-small" type="button" data-webmcp-review="connector">Review visible plan</button></div>
-            </div>
-            <div class="webmcp-artifact-editor"><div><label for="webmcp-connector-plan">Human-editable admission plan</label><span>NOT A CONNECTION</span></div><textarea id="webmcp-connector-plan" rows="18" maxlength="5000" data-webmcp-connector-plan data-webmcp-track="connector" data-webmcp-field-label="connector plan">Stage this showcase to prepare the governed MCP admission plan. No discovery or authorization will start.</textarea></div>
-          </div>
-        </section>
-        </div>
-        <section class="webmcp-v2-receipt" aria-labelledby="webmcp-receipt-title" role="status" aria-live="polite" aria-atomic="false">
-          <div class="webmcp-receipt-heading"><div><p>Shared-state receipt</p><h3 id="webmcp-receipt-title" data-webmcp-studio-title>Nothing staged yet</h3></div><span data-webmcp-studio-state>Idle</span></div>
-          <div class="webmcp-receipt-summary"><span class="policy-icon">⌾</span><p data-webmcp-studio-summary>Choose a workflow. The browser agent or the page controls can prepare it without external side effects.</p></div>
-          <div class="webmcp-receipt-facts"><div><span>Workflow</span><b data-webmcp-studio-workflow>—</b></div><div><span>Destination</span><b data-webmcp-studio-destination>Page only</b></div><div><span>Authority</span><b>Human decision</b></div><div><span>External effects</span><b>false</b></div></div>
-          <div class="webmcp-review-checks"><div class="webmcp-review-heading"><b>Deterministic review</b><span>Untrusted content</span></div><ul data-webmcp-studio-checks><li><span>○</span> Awaiting a staged draft</li></ul></div>
-          <div class="webmcp-collaboration-trace webmcp-studio-trace"><div class="webmcp-trace-heading"><b>Semantic collaboration trail</b><span>Page-local · ephemeral</span></div><ol data-webmcp-trace><li class="webmcp-trace-empty">Tool calls and committed field revisions appear here.</li></ol></div>
-          <div class="webmcp-effect-grid"><span>generated <b>false</b></span><span>transmitted <b>false</b></span><span>stored <b>false</b></span><span>published <b>false</b></span><span>connected <b>false</b></span></div>
-          <p class="webmcp-recording-note"><b>Not a browser recorder.</b> Rally sees its tool callbacks and its own field changes—not history, other tabs, screenshots, raw keystrokes, cookies, or credentials.</p>
-        </section>
-      </div>
-      <p class="webmcp-dialog-boundary"><b>WebMCP is the page interface—not a browser recorder or a remote MCP connection.</b> Rally records only its semantic tool calls and committed field revisions. It cannot see history, other tabs, screenshots, raw keystrokes, cookies, or credentials.</p>
-    </dialog>
 
     <script src="app.js?v=20260901a"></script>
   </body>

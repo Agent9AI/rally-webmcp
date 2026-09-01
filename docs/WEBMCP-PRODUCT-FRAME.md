@@ -1,4 +1,4 @@
-# Rally for WebMCP — product and release frame
+# Rally v2 — WebMCP product frame
 
 ## Decision
 
@@ -6,215 +6,205 @@
 
 **Devpost title:** Rally for WebMCP
 
-**Subtitle:** Accountable browser collaboration
+**Promise:** ChatGPT opens the door. Rally's agents do the work.
 
 **Repository:** `rally-webmcp`
+**Judge path:** `https://rally.agent9.dev/v2/` after deployment verification
 
-**Judge URL:** root of the separate Cloudflare Pages project, intended as
-`https://rally-webmcp.pages.dev/` after deployment and in-app verification
+## Product test
 
-Rally for WebMCP is not a separate tool lab. The root Rally product now exposes
-seven bounded WebMCP tools inside the same application that explains the
-accountable team, shows public run evidence, drafts work, and presents Rally's
-MCP and A2A boundaries.
+A WebMCP feature belongs in the main demo only if it does one of these things in
+the real Rally product:
 
-A person and a browser agent can inspect evidence, prepare a song brief, stage
-an article, stage connector onboarding, edit the same visible fields, and ask
-Rally to review the exact human revision. The agent never receives a hidden
-path around the person's final decision.
+1. prepares the existing visible job form;
+2. starts that exact job through the authenticated queue;
+3. opens a real run, agent turn, check, or deliverable; or
+4. takes the person to an existing connection they can safely complete.
 
-The challenge deadline is **September 3, 2026 at 1:00 PM Pacific / 4:00 PM
-Eastern**. The [Official Rules](https://webmcp.devpost.com/rules) are the
-release clock.
+A page-only text generator does not pass this test.
 
-## Product promise
-
-> Rally lets the browser agent prepare the work where the person can see it,
-> then makes authority stop exactly where the page says it stops.
-
-The integrated product demonstrates three challenge uses:
-
-1. **Original WebMCP song:** stage a fully original Lyria 3 Pro commission with
-   an exact model pin, WebMCP-specific story, no-imitation boundary, provenance
-   requirements, and independent full-file review.
-2. **Agent9 Insights:** stage a human-editable article and disclose the future
-   bounded route—separate human approval, one allowlisted n8n MCP workflow,
-   then an EmDash `journal` draft on Workers + D1. The page does not invoke the
-   route or publish.
-3. **Governed MCP onboarding:** stage an admission plan for one fixed n8n,
-   Cloudflare Observability, GitHub-read, or Google Workspace profile. No
-   arbitrary endpoint, credential, discovery request, OAuth flow, or connection
-   enters through WebMCP.
-
-These are surrounded by Rally's existing public-run search, verification
-inspection, and governed job-draft tools, producing the final seven-tool root
-surface.
-
-## Demonstration sequence
-
-The final sub-three-minute video should show one uninterrupted root-page flow:
-
-1. Open ChatGPT's **Available site tools** and show seven top-level imperative
-   registrations.
-2. Ask Rally to find a blocked public run and inspect its verification gap.
-   The same record opens in the visible D1-backed console.
-3. Ask Rally to stage a 72-second original WebMCP Challenge song. Rally opens
-   the native browser-task dialog and synchronizes the governed Rally draft.
-4. Edit the brief manually. Rally records a page-local semantic revision label,
-   not the field contents or raw keystrokes.
-5. Ask the browser agent to review the visible song revision as untrusted. Show
-   the deterministic receipt and retained human decision.
-6. Stage the Agent9 Insights article. Show the disclosed n8n → EmDash journal
-   draft route and the `published: false` boundary.
-7. Stage the n8n connector profile. Show exact admission gates and
-   `connected: false`.
-8. End on the compact v2 boundary: WebMCP is the shared page; Rally owns
-   authority; MCP is the separate business-tool gateway; A2A is the
-   outside-agent handoff.
-
-## Why this is genuinely WebMCP-native
-
-WebMCP is valuable because both actors share Rally's live interface and page
-state. The model sees named tools and structured schemas; the person sees every
-result in familiar controls.
+## Primary flow
 
 ```text
-agent inspects → agent stages v1 → human edits v2
-       → agent reviews v2 as untrusted → human decides
+person asks ChatGPT for an outcome
+  → ChatGPT fills Rally's real job form
+  → person edits or reviews the request
+  → browser confirms “start”
+  → Rally returns a real run ID
+  → Rally agents divide and perform the work
+  → another agent checks it
+  → ChatGPT opens the same run and result
 ```
 
-This is not a remote endpoint renamed as WebMCP. The handlers reuse Rally's
-public console and onboarding draft, then open one product-native task dialog
-for the editors, receipt, tabs, and collaboration trail.
+This is useful WebMCP because the person and ChatGPT share the live Rally
+workspace and signed-in session. The tool calls reuse operations the product
+already supports.
 
-## Final seven-tool strategy
+## Main demo job
 
-| Tool | Role | Side effects |
+Use one coherent launch job:
+
+> Make our WebMCP launch package: an original song and an Agent9 Insights
+> article based on Rally's real run evidence.
+
+The short demo should show:
+
+1. `rally_prepare_job` opens the real form.
+2. The person edits one line or chorus idea.
+3. `rally_start_visible_job` receives browser review and submits the visible
+   form.
+4. Rally returns a real run ID.
+5. After a time cut, `rally_open_job` shows participating agents, checks, and
+   available results.
+6. If n8n is genuinely connected by then, the run may expose one exact pending
+   “Create Agent9 draft” action. Do not show that state until it returns a real
+   content ID and preview URL.
+
+## Tool strategy
+
+### Public page
+
+| Tool | Role |
+|---|---|
+| `rally_list_public_runs` | Search real public Rally work |
+| `rally_inspect_public_run` | Open one public run and its checks |
+
+### Signed-in workspace
+
+| Tool | Role | Side effect |
 |---|---|---|
-| `rally_list_public_runs` | Search and display explicitly public Rally evidence | Bounded public GET; visible console update |
-| `rally_inspect_public_run` | Open and summarize one public verification record | Bounded public GET; visible console update |
-| `rally_draft_job` | Populate a governed Rally job draft | Page state only |
-| `rally_stage_challenge_song` | Compose the Lyria commission and synchronize Rally's job draft | Page state only |
-| `rally_stage_insights_draft` | Compose an Agent9 Insights article | Page state only |
-| `rally_stage_connector_plan` | Compose a fixed-profile MCP admission plan | Page state only |
-| `rally_review_visible_draft` | Review a human-edited song, article, or connector plan as untrusted | Page state and receipt only |
+| `rally_prepare_job` | Fill the visible form | Page only |
+| `rally_start_visible_job` | Queue the visible form | Starts real agent/media work |
+| `rally_list_my_jobs` | Search private runs | Authenticated GET |
+| `rally_open_job` | Open agents, checks, and results | Authenticated GET |
+| `rally_open_connection` | Open existing service setup | Navigation + authenticated GET |
 
-The final registry deliberately remains small and non-overlapping. Closed
-schemas, handler validation, bounded outputs, abort propagation, trust hints,
-and an unregistration lifecycle are part of the shipped contract.
+The registry stays small. Song, article, and recovery are job examples—not
+separate tools—because Rally should remain general.
 
-## Protocol map
+## Plain-language protocol map
 
-| Boundary | Responsibility |
+| Name | What it means here |
 |---|---|
-| WebMCP | Human-present evidence inspection, staging, visible revision, and review in the root browser page |
-| MCP | Separately admitted server-side business tools used by Rally workers |
-| A2A | Authenticated outside-agent task and artifact handoffs |
-| Rally | Identity, authority, budgets, revisions, recovery, evidence, and no self-approval |
+| WebMCP | ChatGPT can use the Rally page the person has open |
+| MCP | Rally workers can use a connected business service |
+| A2A | Another agent can send a job into Rally |
+| Rally | Runs the team, preserves evidence, and prevents self-approval |
 
-WebMCP does not connect remote MCP servers. A staged connector plan is not a
-connection. A2A is supported by a separate Rally boundary, not by these browser
-calls, and is not a challenge requirement.
+Keep this map in documentation or one disclosure. Do not lead the product with
+protocol terminology.
 
-## Interaction recording: the honest boundary
+## User-visible states
 
-WebMCP is **not** a browser recorder or session-replay permission. Rally can
-observe its own handlers and its own page fields.
+### Prepare
 
-The integrated semantic trail records only:
+- Job form opens.
+- Title and finished result are visible.
+- Nothing is running yet.
+- Person may edit any field.
 
-- the bounded tool action label;
-- whether the turn came from a browser agent or human control;
-- a page-local revision number; and
-- a short effect summary.
+### Start
 
-It does not record browsing history, other tabs, cross-origin activity,
-screenshots, field contents, raw keystrokes, credentials, cookies, tokens,
-private prompts, connector data, or model reasoning. The trail is page-local
-and ephemeral.
+- Tool description says real, potentially billable agents or media may run.
+- Browser applies its normal safety review.
+- Rally uses the page's signed-in identity.
+- The response contains a real run ID and acceptance time.
 
-## Root repository boundary
+### Running
 
-`baseline/all-things-agentic-2026` points to commit `cf2e346`, the clean Rally
-snapshot before the conservative challenge delta. The original Rally worktree
-and remote remain protected; this derivative publishes independently.
+- Workspace queue shows the job.
+- Run detail shows the actual workers and checklist.
+- Refresh uses the existing 13-second workspace poll.
+
+### Complete
+
+- A different worker has approved every required check.
+- Verified deliverables can be opened or downloaded through the existing
+  authenticated artifact endpoint.
+
+### Failure
+
+- Form input remains available when the POST fails.
+- The existing idempotency key is reused on a safe retry.
+- The error says nothing was queued when acceptance did not complete.
+
+## Song truth
+
+The real run `r-20260901-2fb9a4` produced a 63.7-second Lyria MP3. It is not a
+finished success: four of six checks are complete and the required independent
+full-file listening check is still open.
+
+The final demo may call it “audio created” but not “verified” or “complete” until
+a different Rally worker listens to the full artifact and closes the remaining
+checks.
+
+## Agent9 Insight truth
+
+Rally can commission a writer and independent checker now. The repository also
+contains an n8n connector adapter. It does not yet contain proof of a connected
+tenant workflow creating a real Agent9 draft.
+
+The main UI must not claim publication or draft creation until a real execution
+returns:
+
+- connector and tool name;
+- approved payload digest;
+- one-time approval ID;
+- resulting Agent9 content ID;
+- preview URL; and
+- redacted execution receipt.
+
+## Deployment frame
+
+The Worker chooses its static Pages project by path:
 
 ```text
-rally-webmcp/
-├── site/
-│   ├── index.html             Rally v1 product + compact v2 dialog
-│   ├── app.js                 seven tool definitions and handlers
-│   └── styles.css             original product + responsive task dialog
-├── src/
-│   ├── media.py               bounded Lyria generation boundary
-│   ├── runner.py              deterministic execution authority
-│   └── worker/                Cloudflare ingress, D1, and R2 projections
-├── cloud/                     authenticated control plane + connector gateway
-├── tests/
-│   ├── test_webmcp_runtime.mjs seven-tool root VM contract
-│   ├── test_site.py           integrated site and static contracts
-│   └── test_media.py          WebMCP-specific Lyria routing contract
-└── docs/
-    ├── WEBMCP-CHALLENGE-SOURCEBOOK.md official requirement evidence
-    └── WEBMCP-PRODUCT-FRAME.md        this decision record
+rally.agent9.dev/
+  → agent9-rally.pages.dev
+
+rally.agent9.dev/v2/
+  → rally-webmcp.pages.dev
 ```
 
-## Downstream execution boundary
+Both paths reuse Rally's authenticated Worker endpoints. This leaves the v1
+static project untouched while giving the derivative a same-origin workspace.
+The v2 screen uses Google sign-in; the standard email magic-link route remains
+on v1 and is hidden from the v2 sign-in screen.
 
-The root WebMCP app contains public reads and page-state preparation, not
-provider credentials or external writes.
+Before release:
 
-```text
-WebMCP prepares visible work
-  → human reviews the exact revision
-  → current browser-tool authority stops
-  → separately authenticated Rally executor checks identity, policy, and digest
-  → bounded Lyria or allowlisted MCP action runs
-  → independent verifier checks the resulting receipt
-```
+- deploy the derivative Pages project to its production alias;
+- deploy the Worker route and verify both hosts;
+- test login, job POST, run reads, artifact reads, and logout under the `/v2/` path.
 
-The downstream path is evidence only when committed, tested, and demonstrated.
-The root stage/review tools currently and explicitly return false for generation,
-transmission, storage, publication, and connection.
+## Demo outline under three minutes
 
-## Judging map
-
-| Criterion | Rally proof |
-|---|---|
-| WebMCP leverage | Seven typed root tools, live evidence reads, shared visible state, human edit read-back, trust annotations, lifecycle and execution aborts |
-| Execution | One coherent root product, three usable workflows, progressive enhancement, deterministic behavioral harness |
-| Potential impact | Safer preparation for creative work, editorial work, and business-system onboarding without hidden authority |
-| Creativity and ambition | WebMCP coordinates a person and agent across evidence, creation, publishing design, and protocol governance in one Rally interface |
+1. **0:00–0:20 — Value.** “ChatGPT can use Rally with me; Rally's agents still
+   do and check the work.”
+2. **0:20–0:45 — Prepare.** Ask for the launch package; show the visible form.
+3. **0:45–1:00 — Edit.** Change one line.
+4. **1:00–1:20 — Start.** Confirm the consequential tool call; show real run ID.
+5. **1:20–2:15 — Result.** Time cut; open the same run, agents, checks, and MP3
+   or article deliverable.
+6. **2:15–2:35 — Connection.** Ask ChatGPT to open n8n setup. Explain only that
+   Rally workers use connected services; do not claim draft creation unless live.
+7. **2:35–2:50 — Proof.** Show tool list and green CI.
+8. **2:50–3:00 — Close.** “ChatGPT opens the door. Rally's agents do the work.”
 
 ## Release gates
 
-- [x] Independent `rally-webmcp` clone and conservative baseline tag
-- [x] Integrated root Rally v2 product experience
-- [x] Seven top-level imperative `document.modelContext` tools
-- [x] Public evidence search and bounded verification inspection
-- [x] Original-song, Agent9 Insights, and connector-onboarding staging
-- [x] Human revision and untrusted generic review
-- [x] Page-local semantic trail with an explicit non-recording boundary
-- [x] Closed schemas, runtime validation, compact false-effect receipts
-- [x] Execution cancellation and lifecycle cleanup
-- [x] Seven-tool VM harness with mocked public reads and no-write ledger
-- [ ] Deploy and verify `https://rally-webmcp.pages.dev/`
-- [ ] Capture ChatGPT in-app browser discovery and invocation evidence
-- [ ] Complete ordinary-browser, responsive, and accessibility QA
-- [ ] Record a public narrated YouTube demo under 3:00
-- [ ] Finish the Devpost project and confirm **Submitted**, not Draft
-- [ ] Freeze repository, live site, video, entry, and roster through judging
-
-Real Lyria generation, a real n8n → EmDash draft receipt, and an authenticated
-connector execution receipt may strengthen the demonstration only if completed
-and verified before release. They are not claimed by the current browser tools.
-
-## Official references
-
-- Challenge: <https://webmcp.devpost.com/>
-- Rules: <https://webmcp.devpost.com/rules>
-- OpenAI Site tools: <https://learn.chatgpt.com/docs/webmcp>
-- WebMCP draft: <https://webmachinelearning.github.io/webmcp/>
-- Chrome WebMCP guidance: <https://developer.chrome.com/docs/ai/webmcp>
-- Cloudflare Pages direct upload: <https://developers.cloudflare.com/pages/get-started/direct-upload/>
-- Lyria generation: <https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/music/generate-music>
+- [x] Original Rally product identity preserved
+- [x] Page-only song/article/connector studio removed
+- [x] Two read-only public tools
+- [x] Five authenticated workspace tools
+- [x] Real job POST reused by human and WebMCP paths
+- [x] Real run and connection views reused
+- [x] Closed schemas, handler validation, abort propagation, lifecycle cleanup
+- [x] Original and derivative static origins separated by path
+- [ ] Deploy and verify `rally.agent9.dev/v2/`
+- [ ] Invoke all five workspace tools in ChatGPT's browser
+- [ ] Finish independent song listening check
+- [ ] Connect and certify the Agent9 n8n workflow
+- [ ] Return a real Agent9 draft ID and preview URL
+- [ ] Record public narrated demo
+- [ ] Confirm Devpost says **Submitted**

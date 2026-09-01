@@ -34,159 +34,100 @@ class TestProductSite(unittest.TestCase):
             "Rally v2 — Accountable AI teammates, now WebMCP-ready",
             "Give your company accountable AI teammates employees can email like coworkers",
             "Built for the WebMCP Challenge",
-            "Rally v2 · 7 bounded page tools",
+            "Rally v2 · ChatGPT can use Rally",
             "You already have email.",
             "Add accountable AI teammates.",
-            'property="og:url" content="https://rally-webmcp.pages.dev/"',
-            'rel="canonical" href="https://rally-webmcp.pages.dev/"',
+            'property="og:url" content="https://rally.agent9.dev/v2/"',
+            'rel="canonical" href="https://rally.agent9.dev/v2/"',
         ):
             self.assertIn(phrase, self.html)
         self.assertIn('href="#demo">Watch an email become an outcome', self.html)
-        self.assertIn('data-open-webmcp data-webmcp-open-workflow="song">Rally v2 · 7 bounded page tools', self.html)
+        self.assertIn('href="#webmcp">Rally v2 · ChatGPT can use Rally', self.html)
         self.assertNotIn('href="webmcp/"', self.html)
         self.assertNotIn("Now you share the page.", self.html)
         self.assertNotIn("Try Rally's WebMCP studio", self.html)
         self.assertNotIn("dev" + "fest", self.html.lower())
 
-    def test_rally_native_webmcp_dialog_is_judge_ready(self):
+    def test_webmcp_starts_and_opens_real_rally_jobs(self):
         with open(os.path.join(SITE, "app.js")) as handle:
-            app = handle.read()
+            public_app = handle.read()
+        with open(os.path.join(SITE, "admin", "index.html")) as handle:
+            admin_html = handle.read()
+        with open(os.path.join(SITE, "admin", "app.js")) as handle:
+            admin_app = handle.read()
 
         for phrase in (
-            'class="webmcp-sprint"',
-            'class="webmcp-work-dialog"',
-            "Ask Rally on the page.",
-            "Prepare the work together.",
-            "Original song",
-            "Insights draft",
-            "MCP onboarding",
-            "Agent stages",
-            "Human edits",
-            "Agent reviews",
-            "Human decides",
-            "Semantic collaboration trail",
-            "Not a browser recorder.",
+            "Start and follow a Rally job with ChatGPT.",
+            "Rally’s agents still create the work, check it, and show their evidence.",
+            "Make the WebMCP launch song.",
+            "Write an Agent9 Insight from finished work.",
+            "See why a job stopped.",
+            "ChatGPT can start and follow Rally jobs here.",
         ):
-            self.assertIn(phrase, self.html)
+            self.assertIn(phrase, self.html + admin_html)
         self.assertEqual(self.html.count('class="app-window'), 1)
-        self.assertNotIn("webmcp-v2-section", self.html)
-        self.assertNotIn("Shared launch studio", self.html)
-        self.assertNotIn("webmcp-v2-window", self.html)
-        self.assertIn('role="status" aria-live="polite" aria-atomic="false"', self.html)
-        self.assertEqual(self.html.count("data-webmcp-workflow="), 3)
-        self.assertEqual(self.html.count("data-webmcp-panel="), 3)
-        self.assertIn('const webMcpDialog = document.querySelector("[data-webmcp-dialog]")', app)
-        self.assertIn('const openWebMcpDialog = (workflow = "song"', app)
-        self.assertNotIn('document.querySelector("#webmcp")?.scrollIntoView', app)
+        self.assertEqual(self.html.count('href="admin/?view=work"'), 1)
+        self.assertNotIn('class="webmcp-preset" href=', self.html)
+        self.assertNotIn('class="webmcp-work-dialog"', self.html)
+        for removed_jargon in (
+            "Stage Lyria brief",
+            "MCP onboarding",
+            "Shared-state receipt",
+            "Semantic collaboration trail",
+            "UNTRUSTED PAGE CONTENT",
+            "External effects",
+        ):
+            self.assertNotIn(removed_jargon, self.html)
 
-        registration = app.split("async function registerRallyWebMcpTools()", 1)[1]
-        registration = registration.split("void registerRallyWebMcpTools()", 1)[0]
-        expected_tools = [
-            "rally_list_public_runs",
-            "rally_inspect_public_run",
-            "rally_draft_job",
-            "rally_stage_challenge_song",
-            "rally_stage_insights_draft",
-            "rally_stage_connector_plan",
-            "rally_review_visible_draft",
-        ]
+        public_registration = public_app.split("async function registerRallyWebMcpTools()", 1)[1]
+        public_registration = public_registration.split("void registerRallyWebMcpTools()", 1)[0]
         self.assertEqual(
-            re.findall(r'name: "(rally_[a-z0-9_]+)"', registration),
-            expected_tools,
+            re.findall(r'name: "(rally_[a-z0-9_]+)"', public_registration),
+            ["rally_list_public_runs", "rally_inspect_public_run"],
         )
-        self.assertEqual(registration.count("document.modelContext.registerTool({"), 7)
-        self.assertEqual(registration.count("additionalProperties: false"), 7)
-        self.assertEqual(registration.count("readOnlyHint: false"), 7)
-        self.assertEqual(registration.count("untrustedContentHint: true"), 3)
-        self.assertEqual(registration.count("}, { signal: lifecycle.signal })"), 7)
-        self.assertIn(
-            'window.top !== window.self || typeof document.modelContext?.registerTool !== "function"',
-            registration,
-        )
-        self.assertIn("const lifecycle = new AbortController()", registration)
-        self.assertIn(
-            'window.addEventListener("pagehide", () => lifecycle.abort(), { once: true })',
-            registration,
-        )
-        self.assertNotIn("navigator.modelContext", app)
-        self.assertNotIn("provideContext", app)
-        for rejected_tool in (
-            "rally_webmcp_stage_song",
-            "rally_webmcp_stage_insights",
-            "rally_webmcp_stage_connector",
-            "rally_webmcp_review_visible_draft",
-            "rally_review_visible_song_task",
-        ):
-            self.assertNotIn(rejected_tool, registration)
+        self.assertEqual(public_registration.count("document.modelContext.registerTool({"), 2)
+        self.assertEqual(public_registration.count("additionalProperties: false"), 2)
+        self.assertEqual(public_registration.count("readOnlyHint: true"), 2)
+        self.assertEqual(public_registration.count("untrustedContentHint: true"), 2)
+        self.assertEqual(public_registration.count("}, { signal: lifecycle.signal })"), 2)
 
-        effects = app.split("function webMcpExternalEffects()", 1)[1]
-        effects = effects.split("function webMcpCheckSignal", 1)[0]
-        for effect in ("generated", "transmitted", "stored", "published", "connected"):
-            self.assertIn(f"{effect}: false", effects)
-            self.assertIn(f"<span>{effect} <b>false</b></span>", self.html)
-        for status in (
-            'status: "staged_not_generated"',
-            'status: "staged_not_published"',
-            'status: "staged_not_connected"',
-        ):
-            self.assertIn(status, app)
-
-        for boundary in (
-            "WebMCP is the shared browser surface",
-            "Rally's server-side gateway",
-            "A2A is reserved for bounded outside-agent task and artifact handoffs",
-            "WebMCP does not connect remote MCP servers.",
-            "MCP gateway",
-            "outside-agent task and artifact handoffs",
-        ):
-            self.assertIn(boundary, self.html + app)
-
-        for route in (
-            "Rally + n8n MCP",
-            "allowlisted workflow",
-            "EmDash journal",
-            "draft only",
-            "Never silently publish.",
-        ):
-            self.assertIn(route, self.html)
-        self.assertIn(
-            "Execute one allowlisted workflow that creates an EmDash journal draft; publishing is excluded",
-            app,
-        )
-
-        profiles = app.split("const WEBMCP_CONNECTOR_PROFILES = {", 1)[1]
-        profiles = profiles.split("\n};", 1)[0]
+        workspace_registration = admin_app.split(
+            "async function registerWorkspaceWebMcpTools()", 1
+        )[1].split("function renderTeammates()", 1)[0]
         self.assertEqual(
-            re.findall(r'^  "([a-z0-9-]+)": \{$', profiles, re.MULTILINE),
+            re.findall(r'name: "(rally_[a-z0-9_]+)"', workspace_registration),
             [
-                "n8n-agent9-insights",
-                "cloudflare-observability",
-                "github-repository",
-                "google-workspace",
+                "rally_prepare_job",
+                "rally_start_visible_job",
+                "rally_list_my_jobs",
+                "rally_open_job",
+                "rally_open_connection",
             ],
         )
-        for safety_contract in (
-            "arbitrary endpoints are excluded",
-            "No write tool is enabled; deployment remains a separate operator workflow",
-            "No create, update, merge, release, settings, secret, or destructive tool is enabled",
-            "No send, share, calendar mutation, or document-write tool is enabled",
-            "supports read-only onboarding in Rally's current safe preset",
-        ):
-            self.assertIn(safety_contract, app)
+        self.assertEqual(workspace_registration.count("document.modelContext.registerTool({"), 5)
+        self.assertEqual(workspace_registration.count("additionalProperties: false"), 5)
+        self.assertEqual(workspace_registration.count("readOnlyHint: false"), 2)
+        self.assertEqual(workspace_registration.count("readOnlyHint: true"), 3)
+        self.assertEqual(workspace_registration.count("untrustedContentHint: true"), 5)
+        self.assertIn("potentially billable agent and media work", workspace_registration)
+        self.assertIn('workspaceApi("/v1/workspace/jobs", {', admin_app)
+        self.assertIn("async function acceptVisibleJob", admin_app)
+        self.assertIn("const receipt = await acceptVisibleJob({ signal: options.signal })", admin_app)
+        self.assertIn("run_id: receipt.runId", admin_app)
+        self.assertIn("renderRunDetail(record)", admin_app)
+        self.assertIn("loadConnectionSetup({ signal: options.signal, rethrow: true })", admin_app)
+        self.assertIn("requireWorkspaceToolSession(options.signal);", admin_app)
+        self.assertIn("slice(0, 3).map", admin_app)
+        self.assertIn('maximum: 5, default: 5', workspace_registration)
+        self.assertNotIn('"lead"', workspace_registration)
+        self.assertIn("workspaceWebMcpLifecycle?.abort()", admin_app)
+        self.assertIn('window.location.pathname.startsWith("/v2/")', admin_app)
+        self.assertIn("magicLinkForm.hidden = true", admin_app)
+        self.assertIn("privateBrowserLink.hidden = true", admin_app)
+        self.assertNotIn("rally_stage_challenge_song", public_app + admin_app)
+        self.assertNotIn("rally_stage_insights_draft", public_app + admin_app)
+        self.assertNotIn("rally_stage_connector_plan", public_app + admin_app)
 
-        for recording_boundary in (
-            "Tool calls and committed field revisions appear here.",
-            "not history, other tabs, screenshots, raw keystrokes, cookies, or credentials",
-            "not a general browser recorder",
-        ):
-            self.assertIn(recording_boundary, self.html + app)
-
-        with open(os.path.join(SITE, "_headers")) as handle:
-            headers = handle.read()
-        self.assertIn("tools=(self)", headers)
-        self.assertIn("frame-ancestors 'none'", headers)
-        self.assertIn("object-src 'none'", headers)
-        self.assertIn("X-Frame-Options: DENY", headers)
 
     def test_product_proof_and_honest_boundary_are_visible(self):
         for phrase in (
@@ -217,13 +158,11 @@ class TestProductSite(unittest.TestCase):
             "A2A v1.0 compatible",
             "Agent discovery + task exchange",
             "Linux Foundation open governance",
-            "WebMCP enabled",
-            "7 browser tools · human-confirmed",
-            "Can a browser agent use Rally directly?",
-            "seven bounded WebMCP tools",
-            "stage an original Lyria song brief",
-            "review the exact human-edited draft",
-            "it cannot submit, generate, publish, connect",
+            "Works with ChatGPT",
+            "Start jobs · open runs · see results",
+            "Can ChatGPT use Rally directly?",
+            "fill the real job form",
+            "Rally’s agents—not ChatGPT—still perform and check the work",
         ):
             self.assertIn(phrase, self.html)
         self.assertIn('src="rally-symbol.png"', self.html)
@@ -262,7 +201,7 @@ class TestProductSite(unittest.TestCase):
             self.assertIn(f'<p class="label">{phase}</p>', self.html)
         self.assertIn('name="rally-console-api"', self.html)
         self.assertIn('content="https://rally.agent9.dev/v1/console"', self.html)
-        self.assertIn('rel="canonical" href="https://rally-webmcp.pages.dev/"', self.html)
+        self.assertIn('rel="canonical" href="https://rally.agent9.dev/v2/"', self.html)
         self.assertIn("data-second-wind", self.html)
         self.assertIn("Loading authoritative runs", self.html)
         for connector in (
@@ -315,21 +254,11 @@ class TestProductSite(unittest.TestCase):
         for tool in (
             "rally_list_public_runs",
             "rally_inspect_public_run",
-            "rally_draft_job",
-            "rally_stage_challenge_song",
-            "rally_stage_insights_draft",
-            "rally_stage_connector_plan",
-            "rally_review_visible_draft",
         ):
             self.assertIn(f'name: "{tool}"', app)
-        self.assertIn('status: "drafted_not_submitted"', app)
-        self.assertIn("human_confirmation_required: true", app)
-        self.assertIn("transmitted: false", app)
-        self.assertIn("stored: false", app)
-        self.assertGreaterEqual(app.count("readOnlyHint: false, untrustedContentHint: true"), 3)
+        self.assertEqual(app.count("readOnlyHint: true, untrustedContentHint: true"), 2)
         self.assertIn("additionalProperties: false", app)
         self.assertIn("closedWebMcpInput", app)
-        self.assertIn("maxLength: 2000", app)
         admin_root = os.path.join(SITE, "admin")
         for admin_asset in ("index.html", "app.js", "config.js", "styles.css"):
             self.assertTrue(os.path.exists(os.path.join(admin_root, admin_asset)))
@@ -380,7 +309,7 @@ class TestProductSite(unittest.TestCase):
         self.assertIn('state.get("rally-login-code")', admin_app)
         self.assertIn('state.get("rally-connection")', admin_app)
         self.assertIn("window.location.assign", admin_app)
-        self.assertIn('api("/v1/connectors")', admin_app)
+        self.assertIn('api("/v1/connectors", signal ? { signal } : {})', admin_app)
         self.assertIn("loadConnectionSetup", admin_app)
         self.assertIn('state.textContent = "Temporarily unavailable"', admin_app)
         self.assertIn('api("/v1/email-provider-options")', admin_app)
@@ -432,7 +361,7 @@ class TestProductSite(unittest.TestCase):
             security_headers = handle.read()
         self.assertIn("https://accounts.google.com/gsi/client", security_headers)
         self.assertIn("https://accounts.google.com/gsi/style", security_headers)
-        self.assertIn('apiBase: "https://rally.agent9.dev/api/control-plane"', admin_config)
+        self.assertIn('apiBase: `${window.location.origin}/api/control-plane`', admin_config)
         self.assertNotIn(".run.app", admin_config)
         self.assertNotIn("*.a.run.app", security_headers)
         self.assertIn("form-action 'self'", security_headers)
@@ -523,7 +452,7 @@ class TestProductSite(unittest.TestCase):
             'name="source_run_id"',
             'name="second_wind"',
             'data-job-receipt',
-            "Accepted into Rally",
+            "Rally job started",
         ):
             self.assertIn(contract, admin_html)
         self.assertIn('workspaceApi("/v1/workspace/jobs", {', admin_app)
@@ -534,7 +463,11 @@ class TestProductSite(unittest.TestCase):
         self.assertIn("loadWorkspaceRuns({ openRunId: runId, provisional })", admin_app)
         self.assertIn("queuedFallback", admin_app)
         self.assertIn("assistantProfiles", admin_app)
-        self.assertIn("syncAssistantSetup({ prefill: true })", admin_app)
+        open_composer = admin_app.split("function openJobComposer", 1)[1].split(
+            "function closeJobComposer", 1
+        )[0]
+        self.assertIn("syncAssistantSetup();", open_composer)
+        self.assertNotIn("prefill: true", open_composer)
         self.assertIn('selectedAutonomy === "resilient"', admin_app)
         self.assertIn('const payload = { title, goal, second_wind: secondWind };', admin_app)
         self.assertNotIn("persona:", admin_app.split("const payload = { title, goal", 1)[1].split("workspaceApi", 1)[0])
@@ -569,7 +502,10 @@ class TestProductSite(unittest.TestCase):
         self.assertIn("workspaceRefreshController?.abort()", admin_app)
         self.assertIn("refreshActive: true,", admin_app)
         self.assertIn("silent: true,", admin_app)
-        self.assertIn("stopWorkspacePolling();\n    idToken = \"\";", admin_app)
+        reset_body = admin_app.split("function resetSession", 1)[1].split("function setAccount", 1)[0]
+        self.assertIn("stopWorkspacePolling();", reset_body)
+        self.assertIn("workspaceWebMcpLifecycle?.abort();", reset_body)
+        self.assertIn('idToken = "";', reset_body)
         self.assertIn("if (silent || dashboard.hidden) return false;", admin_app)
         self.assertNotIn("setInterval(", admin_app)
 
@@ -674,6 +610,8 @@ class TestProductSite(unittest.TestCase):
         with open(os.path.join(ROOT, "src", "worker", "index.js")) as handle:
             worker = handle.read()
         self.assertIn('const SITE_ORIGIN = "https://agent9-rally.pages.dev"', worker)
+        self.assertIn('const WEBMCP_SITE_ORIGIN = "https://rally-webmcp.pages.dev"', worker)
+        self.assertIn('const WEBMCP_PATH_PREFIX = "/v2"', worker)
         self.assertIn(
             "return await fetch(new Request(upstreamUrl, { method: request.method, headers }))",
             worker,

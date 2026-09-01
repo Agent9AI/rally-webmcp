@@ -42,6 +42,8 @@ const WORKSPACE_ARTIFACT_ROOT = "/v1/workspace/artifacts";
 const WORKSPACE_JOBS_ROOT = "/v1/workspace/jobs";
 const CONTROL_PLANE_PROXY_ROOT = "/api/control-plane";
 const SITE_ORIGIN = "https://agent9-rally.pages.dev";
+const WEBMCP_SITE_ORIGIN = "https://rally-webmcp.pages.dev";
+const WEBMCP_PATH_PREFIX = "/v2";
 const CONTROL_PLANE_ORIGIN = "https://rally-control-plane-1000134647783.us-east1.run.app";
 const GOOGLE_CALLBACK_PATH = "/admin/google/callback";
 const CONNECTOR_START_ROOT = "/admin/connect/start/";
@@ -95,7 +97,18 @@ const publicJson = (obj, status = 200) => json(obj, status, {
 });
 
 async function serveSite(request, url) {
-  const upstreamUrl = new URL(`${url.pathname}${url.search}`, SITE_ORIGIN);
+  const webMcpPath = url.hostname === "rally.agent9.dev" &&
+    (url.pathname === WEBMCP_PATH_PREFIX || url.pathname.startsWith(`${WEBMCP_PATH_PREFIX}/`));
+  const staticOrigin = webMcpPath ? WEBMCP_SITE_ORIGIN : SITE_ORIGIN;
+  const upstreamPath = webMcpPath
+    ? url.pathname.slice(WEBMCP_PATH_PREFIX.length) || "/"
+    : url.pathname;
+  const upstreamUrl = new URL(staticOrigin);
+  upstreamUrl.pathname = upstreamPath;
+  upstreamUrl.search = url.search;
+  if (upstreamUrl.origin !== staticOrigin) {
+    return json({ error: "site temporarily unavailable" }, 502);
+  }
   try {
     // Preserve the response stream and its security/cache headers. Rally's
     // custom domain stays on this Worker so the console API is same-origin,
@@ -360,6 +373,21 @@ async function proxyConnectorStart(request, connectorId) {
   }
   const raw = await boundedText(request, MAX_CONNECTOR_START_BODY);
   if (raw === null) return json({ detail: "invalid connection request" }, 413);
+  let requestBody;
+  let returnPath;
+  try {
+    requestBody = JSON.parse(raw);
+    if (!requestBody || typeof requestBody !== "object" || Array.isArray(requestBody)) {
+      throw new Error("invalid body");
+    }
+    returnPath = requestBody.return_path == null ? "/admin/" : requestBody.return_path;
+    if (!new Set(["/admin/", "/v2/admin/"]).has(returnPath)) {
+      throw new Error("invalid return path");
+    }
+    delete requestBody.return_path;
+  } catch (_) {
+    return json({ detail: "invalid connection request" }, 400);
+  }
 
   const headers = userAuthHeaders(request);
   if (!headers) {
@@ -371,7 +399,7 @@ async function proxyConnectorStart(request, connectorId) {
   try {
     upstream = await fetch(
       `${CONTROL_PLANE_ORIGIN}/v1/connections/${encodeURIComponent(connectorId)}/oauth/start`,
-      { method: "POST", headers, body: raw, redirect: "manual" },
+      { method: "POST", headers, body: JSON.stringify(requestBody), redirect: "manual" },
     );
   } catch (_) {
     return json({ detail: "provider authorization is unavailable" }, 502);
@@ -413,16 +441,17 @@ async function proxyConnectorStart(request, connectorId) {
     return json({ detail: "provider authorization is unavailable" }, 502);
   }
   const cookieName = await oauthCookieName(stateValues[0]);
+  const browserCookie = `${result.browser_binding}${returnPath === "/v2/admin/" ? ".v2" : ""}`;
   return json(
     {
       connector_id: connectorId,
       authorization_url: authorization.href,
-      return_to: "https://rally.agent9.dev/admin/",
+      return_to: `https://rally.agent9.dev${returnPath}`,
     },
     200,
     {
       "referrer-policy": "no-referrer",
-      "set-cookie": `${cookieName}=${result.browser_binding}; Max-Age=600; Path=/admin/connect/callback; Secure; HttpOnly; SameSite=Lax`,
+      "set-cookie": `${cookieName}=${browserCookie}; Max-Age=600; Path=/admin/connect/callback; Secure; HttpOnly; SameSite=Lax`,
     },
   );
 }
@@ -526,17 +555,20 @@ function htmlAttribute(value) {
     .replaceAll(">", "&gt;");
 }
 
-async function connectorProgressResponse(upstreamRequest, clearCookie) {
+async function connectorProgressResponse(upstreamRequest, clearCookie, returnPath = "/admin/") {
   const nonce = crypto.randomUUID().replaceAll("-", "");
   const shell = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Rally · Securing connection</title><style nonce="${nonce}">:root{color-scheme:light;font-family:Roboto,Arial,sans-serif;color:#10233f;background:#f7f9fc}*{box-sizing:border-box}body{min-height:100vh;margin:0;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 70% 15%,#eaf1ff 0,transparent 38%),#f7f9fc}.shell{width:min(760px,100%);padding:54px;border:1px solid #d9e0ea;border-radius:30px;background:#fff;box-shadow:0 22px 70px rgba(16,35,63,.12)}.brand{display:flex;align-items:center;gap:10px;font-weight:750}.mark{width:38px;height:38px;display:grid;place-items:center;color:#fff;border-radius:12px;background:#246bfd}.eyebrow{margin:50px 0 14px;color:#246bfd;font-size:.72rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase}h1{margin:0;font-size:clamp(2.6rem,7vw,4.8rem);font-weight:520;line-height:1;letter-spacing:-.055em}p{max-width:610px;margin:24px 0 0;color:#526178;line-height:1.6}.rail{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:38px}.rail span{padding:11px 8px;text-align:center;color:#617188;border-radius:999px;background:#f0f3f8;font-size:.68rem;font-weight:750}.rail span:nth-child(-n+2){color:#174ea6;background:#e9f0ff}.pulse{display:inline-block;width:9px;height:9px;margin-right:8px;border-radius:50%;background:#20a66a;box-shadow:0 0 0 7px rgba(32,166,106,.1);animation:pulse 1.2s ease-in-out infinite}@keyframes pulse{50%{opacity:.4;transform:scale(.78)}}a{display:inline-flex;margin:28px 22px 0 0;color:#246bfd;font-weight:700;text-decoration:none}</style></head><body><main class="shell"><div class="brand"><span class="mark">R</span>Rally</div><p class="eyebrow"><span class="pulse"></span>Secure provider return</p><h1>Approval received.<br>Securing it now.</h1><p>Rally is encrypting the provider grant and returning you to the exact connection card. It will test live access there before enabling any tool.</p><div class="rail" aria-label="Connection progress"><span>Approved</span><span>Encrypted</span><span>Returned</span><span>Tested</span></div><div aria-live="polite">`;
   let body;
   let completed = false;
   try {
     const upstream = await upstreamRequest();
-    const target = safeConnectorReturn(upstream.headers.get("location") || "");
-    if (upstream.status < 300 || upstream.status >= 400 || !target) {
+    const upstreamTarget = safeConnectorReturn(upstream.headers.get("location") || "");
+    if (upstream.status < 300 || upstream.status >= 400 || !upstreamTarget) {
       throw new Error("invalid control-plane return");
     }
+    const targetUrl = new URL(upstreamTarget);
+    targetUrl.pathname = returnPath;
+    const target = targetUrl.href;
     const escaped = htmlAttribute(target);
     completed = true;
     body = `${shell}<p>Approval secured. Returning you to finish the live connection test…</p><a href="${escaped}">Continue to Rally</a></div><script nonce="${nonce}">window.location.replace(${JSON.stringify(target)});</script></main></body></html>`;
@@ -545,7 +577,7 @@ async function connectorProgressResponse(upstreamRequest, clearCookie) {
       event: "connector_callback_failed",
       error: error instanceof Error ? error.message : String(error),
     }));
-    body = `${shell}<p>Rally could not confirm whether this provider return completed. Go back to your connections; if this card is not connected, choose Connect again.</p><a href="/admin/">Return to connections</a></div></main></body></html>`;
+    body = `${shell}<p>Rally could not confirm whether this provider return completed. Go back to your connections; if this card is not connected, choose Connect again.</p><a href="${htmlAttribute(returnPath)}">Return to connections</a></div></main></body></html>`;
   }
   const headers = {
     "cache-control": "no-store",
@@ -604,7 +636,14 @@ async function proxyConnectorCallback(request, url) {
   }
 
   const cookieName = await oauthCookieName(state);
-  const browserBinding = cookieValue(request, cookieName);
+  const browserCookie = cookieValue(request, cookieName);
+  const returnPath = browserCookie.endsWith(".v2") ? "/v2/admin/" : "/admin/";
+  const browserBinding = returnPath === "/v2/admin/"
+    ? browserCookie.slice(0, -3)
+    : browserCookie;
+  if (!OAUTH_SECRET.test(browserBinding)) {
+    return json({ error: "invalid or expired authorization response" }, 400);
+  }
   const clearCookie = `${cookieName}=; Max-Age=0; Path=/admin/connect/callback; Secure; HttpOnly; SameSite=Lax`;
   return await connectorProgressResponse(() =>
     fetch(`${CONTROL_PLANE_ORIGIN}/auth/connector/callback`, {
@@ -622,6 +661,7 @@ async function proxyConnectorCallback(request, url) {
       redirect: "manual",
     }),
     clearCookie,
+    returnPath,
   );
 }
 

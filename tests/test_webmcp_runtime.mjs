@@ -304,16 +304,11 @@ vm.runInContext(app, context, { filename: "site/app.js" });
 await new Promise((resolve) => setTimeout(resolve, 0));
 
 const expectedTools = [
-  "rally_draft_job",
   "rally_inspect_public_run",
   "rally_list_public_runs",
-  "rally_review_visible_draft",
-  "rally_stage_challenge_song",
-  "rally_stage_connector_plan",
-  "rally_stage_insights_draft",
 ];
 assert.deepEqual([...tools.keys()].sort(), expectedTools);
-assert.equal(v2StatusTitle.textContent, "WebMCP connected · 7 tools");
+assert.equal(v2StatusTitle.textContent, "ChatGPT can search Rally's public work here.");
 assert.equal(document.documentElement.dataset.webmcp, "ready");
 
 for (const [name, tool] of tools) {
@@ -321,29 +316,16 @@ for (const [name, tool] of tools) {
   assert.equal(tool.inputSchema.additionalProperties, false, `${name} must close its schema`);
   assert(registrationOptions.get(name).signal instanceof AbortSignal, `${name} needs a lifecycle signal`);
   assert.equal(registrationOptions.get(name).signal.aborted, false);
+  assert.equal(tool.annotations.readOnlyHint, true);
+  assert.equal(tool.annotations.untrustedContentHint, true);
 }
-assert.equal(tools.get("rally_review_visible_draft").annotations.untrustedContentHint, true);
-assert.equal(tools.get("rally_list_public_runs").annotations.untrustedContentHint, true);
-assert.equal(tools.get("rally_inspect_public_run").annotations.untrustedContentHint, true);
 
 const executionSignal = () => new AbortController().signal;
 const isTypeError = (error) => error?.name === "TypeError";
-const assertNoExternalEffects = (result) => {
-  for (const key of ["generated", "transmitted", "stored", "published", "connected"]) {
-    assert.equal(result[key], false, `${result.workflow || result.status} unexpectedly set ${key}`);
-  }
-  assert.equal(result.human_confirmation_required, true);
-  assert(JSON.stringify(result).length <= 1500, "WebMCP result exceeded the compact 1,500-character boundary");
-};
 
 const closedInputCases = new Map([
   ["rally_list_public_runs", { query: "blocked", limit: 2 }],
   ["rally_inspect_public_run", { run_id: publicRun.run_id }],
-  ["rally_draft_job", { goal: "Prepare one bounded WebMCP launch outcome." }],
-  ["rally_stage_challenge_song", { creative_direction: "Tell the story of visible human authority in one shared browser page." }],
-  ["rally_stage_insights_draft", { angle: "Explain why shared visible state makes browser-agent work accountable." }],
-  ["rally_stage_connector_plan", { profile: "n8n-agent9-insights", purpose: "Create one EmDash journal draft after exact human approval." }],
-  ["rally_review_visible_draft", { workflow: "song" }],
 ]);
 for (const [name, validInput] of closedInputCases) {
   await assert.rejects(
@@ -360,153 +342,16 @@ const listed = await tools.get("rally_list_public_runs").execute(
 );
 assert.equal(listed.count, 1);
 assert.equal(listed.runs[0].run_id, publicRun.run_id);
-assert.match(listed.trust_notice, /untrusted public content/i);
+assert.match(listed.message, /visible on the page/i);
 
 const inspected = await tools.get("rally_inspect_public_run").execute(
   { run_id: publicRun.run_id },
   { signal: executionSignal() },
 );
 assert.equal(inspected.run.run_id, publicRun.run_id);
-assert.equal(inspected.checklist.length, 2);
-assert.equal(inspected.value_receipt.self_approved, 0);
-assert.match(inspected.trust_notice, /untrusted public content/i);
+assert.equal(inspected.checks.length, 2);
+assert.match(inspected.message, /real Rally run/i);
 
-const callsAfterPublicReads = fetchCalls.length;
-const drafted = await tools.get("rally_draft_job").execute({
-  company: "Agent9",
-  team: "Rally for WebMCP",
-  goal: "Prepare a human-reviewable launch plan without submitting or connecting anything.",
-  trusted_systems: ["n8n", "cloudflare"],
-  second_wind: true,
-}, { signal: executionSignal() });
-assert.equal(drafted.status, "drafted_not_submitted");
-assert.equal(drafted.transmitted, false);
-assert.equal(drafted.stored, false);
-assert.equal(goal.value.length > 20, true);
-assert.equal(fetchCalls.length, callsAfterPublicReads, "drafting a job caused a network request");
-
-const stagedSong = await tools.get("rally_stage_challenge_song").execute({
-  creative_direction: "Make the confirmation moment musical: Rally stages each move, the human edits the shared page, and only the human can commission the result.",
-  hook: "Same page, clear hands — Rally the work, I make the call.",
-  style: "west-coast-storytelling",
-  duration_seconds: 72,
-}, { signal: executionSignal() });
-assert.equal(stagedSong.status, "staged_not_generated");
-assert.equal(stagedSong.model, "lyria-3-pro-preview");
-assertNoExternalEffects(stagedSong);
-assert.match(songBrief.value, /named, structured tools/i);
-assert.match(songBrief.value, /Agent9 Insights[\s\S]*allowlisted n8n(?: MCP)? workflow[\s\S]*EmDash/i);
-assert.match(songBrief.value, /WebMCP is the shared browser surface[\s\S]*governed MCP[\s\S]*A2A/i);
-assert.equal(goal.value, songBrief.value);
-assert.equal(webMcpDialog.open, true, "song staging did not reveal the Rally browser-task dialog");
-assert.equal(workflowTabs[0]["aria-selected"], "true");
-assert.equal(workflowPanels[0].hidden, false);
-assert.equal(workflowPanels[1].hidden, true);
-assert.equal(fetchCalls.length, callsAfterPublicReads, "song staging caused a network request");
-
-const reviewTool = tools.get("rally_review_visible_draft");
-const reviewedDefaultSong = await reviewTool.execute(
-  { workflow: "song" },
-  { signal: executionSignal() },
-);
-assert.equal(reviewedDefaultSong.status, "ready_for_human_decision");
-assert.equal(reviewedDefaultSong.ready, true);
-assertNoExternalEffects(reviewedDefaultSong);
-
-const stagedInsights = await tools.get("rally_stage_insights_draft").execute({
-  angle: "Explain why a browser agent should prepare work in the exact page a person can inspect and revise.",
-  audience: "builders",
-  closing_thought: "Put the agent's controls where the person can see them.",
-}, { signal: executionSignal() });
-assert.equal(stagedInsights.status, "staged_not_published");
-assert.equal(stagedInsights.future_destination, "EmDash journal draft");
-assertNoExternalEffects(stagedInsights);
-assert.match(insightsBody.value, /allowlisted n8n MCP workflow/i);
-assert.match(insightsBody.value, /It does not publish/i);
-assert.match(insightsBody.value, /not a general browser recorder/i);
-assert.equal(workflowTabs[1]["aria-selected"], "true");
-assert.equal(workflowPanels[1].hidden, false);
-assert.equal(fetchCalls.length, callsAfterPublicReads, "Insights staging caused a network request");
-
-const stagedConnector = await tools.get("rally_stage_connector_plan").execute({
-  profile: "n8n-agent9-insights",
-  access_mode: "read-with-approved-writes",
-  purpose: "Create one EmDash journal draft for a human-approved Agent9 Insights article.",
-}, { signal: executionSignal() });
-assert.equal(stagedConnector.status, "staged_not_connected");
-assert.equal(stagedConnector.profile, "n8n-agent9-insights");
-assertNoExternalEffects(stagedConnector);
-assert.match(connectorPlan.value, /never accepts an arbitrary URL/i);
-assert.match(connectorPlan.value, /Every write needs explicit human approval/i);
-assert.match(connectorPlan.value, /No discovery, authorization, network request, storage, or connection has started/i);
-assert.equal(workflowTabs[2]["aria-selected"], "true");
-assert.equal(workflowPanels[2].hidden, false);
-assert.equal(fetchCalls.length, callsAfterPublicReads, "connector staging caused a network request");
-
-await assert.rejects(
-  tools.get("rally_stage_connector_plan").execute({
-    profile: "cloudflare-observability",
-    access_mode: "read-with-approved-writes",
-    purpose: "Attempt an unsupported write through a read-only connector profile.",
-  }, { signal: executionSignal() }),
-  isTypeError,
-);
-
-const reviewedInsights = await reviewTool.execute(
-  { workflow: "insights" },
-  { signal: executionSignal() },
-);
-assert.equal(reviewedInsights.status, "ready_for_human_decision");
-assert.equal(reviewedInsights.ready, true);
-assertNoExternalEffects(reviewedInsights);
-
-const reviewedConnector = await reviewTool.execute(
-  { workflow: "connector" },
-  { signal: executionSignal() },
-);
-assert.equal(reviewedConnector.status, "ready_for_human_decision");
-assert.equal(reviewedConnector.ready, true);
-assertNoExternalEffects(reviewedConnector);
-
-const originalSongBrief = songBrief.value;
-songBrief.value = originalSongBrief.replace(
-  "WebMCP is the shared browser surface",
-  "WebMCP is the browser surface",
-);
-songBrief.dispatch("change");
-const reviewedEditedSong = await reviewTool.execute(
-  { workflow: "song" },
-  { signal: executionSignal() },
-);
-assert.equal(reviewedEditedSong.status, "needs_attention");
-assert.equal(reviewedEditedSong.ready, false);
-assert(reviewedEditedSong.failed_checks.includes("protocol_roles"));
-assert.match(reviewedEditedSong.trust_notice, /untrusted data/i);
-assert(reviewedEditedSong.collaboration_trace.some((entry) =>
-  entry.actor === "human" && entry.action === "committed field revision"));
-assertNoExternalEffects(reviewedEditedSong);
-assert.equal(fetchCalls.length, callsAfterPublicReads, "review caused a network request");
-
-songBrief.value = originalSongBrief;
-songBrief.dispatch("change");
-const reviewedSong = await reviewTool.execute(
-  { workflow: "song" },
-  { signal: executionSignal() },
-);
-assert.equal(reviewedSong.status, "ready_for_human_decision");
-assert.equal(reviewedSong.ready, true);
-assertNoExternalEffects(reviewedSong);
-
-const abortedExecution = new AbortController();
-abortedExecution.abort();
-await assert.rejects(
-  tools.get("rally_stage_insights_draft").execute(
-    { angle: "This valid request must still stop when its browser execution is cancelled." },
-    { signal: abortedExecution.signal },
-  ),
-  (error) => error?.name === "AbortError",
-);
-assert.equal(fetchCalls.length, callsAfterPublicReads, "aborted execution reached the network");
 
 assert.equal(fetchCalls.length, 2);
 for (const call of fetchCalls) {
@@ -521,6 +366,6 @@ window.dispatch("pagehide");
 assert(lifecycleSignals.every((signal) => signal.aborted), "pagehide did not unregister the tools");
 
 console.log(
-  "Root WebMCP v2 contract passed: 7 tools, public reads, three staged workflows, " +
-  "human edit + untrusted review, aborts, closed schemas, compact receipts, zero silent writes",
+  "Root WebMCP contract passed: 2 read-only public tools, closed schemas, " +
+  "GET-only behavior, visible page updates, and lifecycle cleanup",
 );

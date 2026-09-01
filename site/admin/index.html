@@ -28,7 +28,7 @@
         <div class="vault-location" aria-label="Credential storage location"><span>Stored in Google Cloud</span><b>Ciphertext only · KMS protected</b></div>
         <div class="signin-action">
           <div data-google-button></div>
-          <div class="signin-divider"><span>or use an invited company email</span></div>
+          <div class="signin-divider" data-email-signin-divider><span>or use an invited company email</span></div>
           <form class="magic-link-form" data-magic-link-form>
             <label for="magic-link-email">Approved business email</label>
             <div>
@@ -38,7 +38,8 @@
             <p class="magic-link-status" role="status" aria-live="polite" aria-atomic="true" data-magic-link-status></p>
           </form>
           <p class="configuration-note" role="status" aria-live="polite" aria-atomic="true" data-configuration-note>Checking secure sign-in…</p>
-          <a class="signin-fallback" href="private-browser/">Privacy browser or blocked pop-up? Use full-page sign-in <span aria-hidden="true">→</span></a>
+          <a class="signin-fallback" href="private-browser/" data-private-browser-link>Privacy browser or blocked pop-up? Use full-page sign-in <span aria-hidden="true">→</span></a>
+          <p class="configuration-note" data-v2-signin-note hidden>For Rally v2, continue with Google so you return to this workspace.</p>
         </div>
       </div>
       <aside class="security-receipt" aria-label="Credential security architecture">
@@ -77,6 +78,11 @@
             <div><span data-metric-attention>0</span><p>need attention</p></div>
             <div><span data-metric-complete>0</span><p>completed</p></div>
             <div><span data-connection-count>0</span><p>certified systems</p></div>
+          </div>
+
+          <div class="workspace-webmcp" data-workspace-webmcp-status role="status" aria-live="polite">
+            <span aria-hidden="true">W</span>
+            <div><b>ChatGPT can start and follow Rally jobs here.</b><small>Rally’s agents still do the work, check it, and return the result.</small></div>
           </div>
 
           <section class="commission-hub" data-onboarding aria-labelledby="commission-title">
@@ -127,7 +133,7 @@
                     <button class="is-selected" type="button" data-autonomy="resilient" aria-pressed="true">Resilient <em>Recommended</em></button>
                   </div>
                 </div>
-                <p class="posture-note" data-posture-note>One bounded recovery handoff is allowed. A different model must still approve the work.</p>
+                <p class="posture-note" data-posture-note>If one agent gets stuck, another may try once. A different agent still checks the finished work.</p>
               </section>
 
               <section class="setup-step setup-assets" aria-labelledby="setup-assets-title">
@@ -157,7 +163,7 @@
 
             <form class="job-composer" id="manual-job-composer" data-job-form aria-labelledby="job-composer-title" aria-busy="false" hidden>
               <div class="job-composer-heading">
-                <div><p class="eyebrow">New dashboard job</p><h3 id="job-composer-title" tabindex="-1">Describe the outcome—not the busywork.</h3><p class="composer-brief"><span data-composer-persona>Executive strategist</span><span data-composer-expertise>Focused expertise</span><span data-composer-autonomy>Resilient recovery</span></p></div>
+                <div><p class="eyebrow">New dashboard job</p><h3 id="job-composer-title" tabindex="-1">Describe the outcome—not the busywork.</h3><p class="composer-brief"><span data-composer-persona>Executive strategist</span><span data-composer-expertise>Focused expertise</span><span data-composer-autonomy>Retry once if blocked</span></p></div>
                 <button type="button" aria-label="Close new job form" data-close-job-composer>&times;</button>
               </div>
               <div class="job-fields">
@@ -165,18 +171,18 @@
                 <label class="job-goal"><span>What does done look like?</span><textarea name="goal" rows="4" required maxlength="6000" placeholder="Review the launch plan, identify material gaps, and return a prioritized recommendation with evidence." data-job-goal></textarea></label>
               </div>
               <details class="job-continuity">
-                <summary>Continuity options</summary>
+                <summary>Follow-up and recovery</summary>
                 <div class="job-options">
-                  <label><span>Source run ID <small>optional</small></span><input name="source_run_id" type="text" maxlength="128" pattern="[A-Za-z0-9][A-Za-z0-9._:-]*" autocomplete="off" spellcheck="false" placeholder="Continue or recover an earlier run" data-job-source-run></label>
-                  <label class="job-checkbox"><input name="second_wind" type="checkbox" checked data-job-second-wind><span><b>Allow Second Wind</b><small>One bounded recovery handoff. Independent approval still applies.</small></span></label>
+                  <label><span>Earlier job ID <small>optional</small></span><input name="source_run_id" type="text" maxlength="128" pattern="[A-Za-z0-9][A-Za-z0-9._:-]*" autocomplete="off" spellcheck="false" placeholder="Reference an earlier job in this new request" data-job-source-run></label>
+                  <label class="job-checkbox"><input name="second_wind" type="checkbox" checked data-job-second-wind><span><b>Let another agent try if one gets stuck</b><small>One retry. A different agent still checks the finished work.</small></span></label>
                 </div>
               </details>
-              <div class="job-submit-row"><p role="status" aria-live="polite" aria-atomic="true" data-job-form-status></p><button class="workspace-primary" type="submit" data-job-submit>Accept into queue</button></div>
+              <div class="job-submit-row"><div class="job-submit-copy"><small>Starts real agents and may use paid model or media services.</small><p role="status" aria-live="polite" aria-atomic="true" data-job-form-status></p></div><button class="workspace-primary" type="submit" data-job-submit>Start Rally job</button></div>
             </form>
 
             <div class="job-acceptance" role="status" aria-live="polite" aria-atomic="false" tabindex="-1" data-job-receipt hidden>
               <span class="job-acceptance-mark" aria-hidden="true">&#10003;</span>
-              <div><p>Accepted into Rally</p><h3 data-job-receipt-title>Job accepted</h3><p><code data-job-receipt-id></code><span data-job-receipt-detail>Queued with Rally policy attached.</span></p></div>
+              <div><p>Rally job started</p><h3 data-job-receipt-title>Job started</h3><p><code data-job-receipt-id></code><span data-job-receipt-detail>Waiting for Rally’s agents.</span></p></div>
               <div class="job-acceptance-actions"><button type="button" data-view-accepted-job>View job</button><button type="button" data-compose-another>Add another</button></div>
             </div>
           </section>

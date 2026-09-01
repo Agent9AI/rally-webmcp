@@ -192,4 +192,55 @@ for (const name of [
   assert.equal(staticProxy.headers[name], undefined);
 }
 
+const webMcpStaticResponse = await worker.fetch(new Request(
+  "https://rally.agent9.dev/v2/admin/app.js",
+), {}, {});
+assert.equal(webMcpStaticResponse.status, 303);
+assert.equal(
+  capturedRequests.at(-1).input,
+  "https://rally-webmcp.pages.dev/admin/app.js",
+);
+
+const doubleSlashResponse = await worker.fetch(new Request(
+  "https://rally.agent9.dev/v2//example.com/owned",
+), {}, {});
+assert.equal(doubleSlashResponse.status, 303);
+assert.equal(
+  capturedRequests.at(-1).input,
+  "https://rally-webmcp.pages.dev//example.com/owned",
+);
+
+const v2Start = await worker.fetch(new Request(
+  "https://rally.agent9.dev/admin/connect/start/google-workspace",
+  {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-rally-id-token": "i".repeat(120),
+    },
+    body: JSON.stringify({
+      endpoint: null,
+      workflow_ids: [],
+      return_path: "/v2/admin/",
+    }),
+  },
+), {}, {});
+assert.equal(v2Start.status, 200);
+assert.deepEqual(JSON.parse(capturedRequests.at(-1).init.body), {
+  endpoint: null,
+  workflow_ids: [],
+});
+const v2StartBody = await v2Start.json();
+assert.equal(v2StartBody.return_to, "https://rally.agent9.dev/v2/admin/");
+const v2Cookie = v2Start.headers.get("set-cookie") || "";
+assert.match(v2Cookie, /\.v2;/);
+
+const v2Callback = await worker.fetch(new Request(callback, {
+  headers: { cookie: v2Cookie.split(";", 1)[0] },
+}), {}, {});
+assert.equal(v2Callback.status, 200);
+const v2CallbackHtml = await v2Callback.text();
+assert.match(v2CallbackHtml, /https:\/\/rally\.agent9\.dev\/v2\/admin\/#rally-login-code=/);
+assert.doesNotMatch(v2CallbackHtml, /window\.location\.replace\("https:\/\/rally\.agent9\.dev\/admin\//);
+
 console.log("worker callback contract passed");

@@ -20,6 +20,9 @@
   const magicLinkEmail = document.querySelector("[data-magic-link-email]");
   const magicLinkSubmit = document.querySelector("[data-magic-link-submit]");
   const magicLinkStatus = document.querySelector("[data-magic-link-status]");
+  const emailSigninDivider = document.querySelector("[data-email-signin-divider]");
+  const privateBrowserLink = document.querySelector("[data-private-browser-link]");
+  const v2SigninNote = document.querySelector("[data-v2-signin-note]");
   const signOutButton = document.querySelector("[data-sign-out]");
   const grid = document.querySelector("[data-connection-grid]");
   const dialog = document.querySelector("[data-credential-dialog]");
@@ -54,6 +57,7 @@
   const metricAttention = document.querySelector("[data-metric-attention]");
   const metricComplete = document.querySelector("[data-metric-complete]");
   const workspaceLiveStatus = document.querySelector("[data-workspace-live-status]");
+  const workspaceWebMcpStatus = document.querySelector("[data-workspace-webmcp-status]");
   const commissionHub = document.querySelector(".commission-hub");
   const commissionTitle = document.querySelector("#commission-title");
   const commissionSummary = document.querySelector("[data-commission-summary]");
@@ -124,6 +128,15 @@
   let workspaceRefreshInFlight = false;
   let workspaceRefreshController = null;
   const artifactObjectUrls = new Map();
+  let workspaceWebMcpLifecycle = null;
+  const isV2Path = window.location.pathname === "/v2" || window.location.pathname.startsWith("/v2/");
+
+  if (isV2Path) {
+    emailSigninDivider.hidden = true;
+    magicLinkForm.hidden = true;
+    privateBrowserLink.hidden = true;
+    v2SigninNote.hidden = false;
+  }
 
   const configuredApi = /^https:\/\//.test(config.apiBase || "");
   const configuredGoogle = configuredApi &&
@@ -295,7 +308,10 @@
       {
         method: "POST",
         headers,
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          ...body,
+          return_path: isV2Path ? "/v2/admin/" : "/admin/",
+        }),
         credentials: "same-origin",
       },
     );
@@ -323,6 +339,10 @@
 
   function resetSession(message = "") {
     stopWorkspacePolling();
+    workspaceWebMcpLifecycle?.abort();
+    workspaceWebMcpLifecycle = null;
+    delete document.documentElement.dataset.webmcpWorkspace;
+    workspaceWebMcpStatus?.classList.remove("is-ready");
     idToken = "";
     sessionToken = "";
     clearArtifactObjectUrls();
@@ -624,11 +644,11 @@
       ? "Deep-specialist brief"
       : "Focused brief";
     composerAutonomy.textContent = selectedAutonomy === "resilient"
-      ? "Resilient recovery"
-      : "Guarded execution";
+      ? "Retry once if blocked"
+      : "Stop if blocked";
     postureNote.textContent = selectedAutonomy === "resilient"
-      ? "One bounded recovery handoff is allowed. A different model must still approve the work."
-      : "The run stops at the first unrecoverable blocker. A different model must still approve completed work.";
+      ? "If one agent gets stuck, another may try once. A different agent still checks the finished work."
+      : "The job stops at the first blocker it cannot solve. A different agent still checks completed work.";
     if (prefill) {
       if (!jobTitle.value || jobTitle.value === previousDraft.title) jobTitle.value = draft.title;
       if (!jobGoal.value || jobGoal.value === previousDraft.goal) jobGoal.value = draft.goal;
@@ -705,7 +725,7 @@
     jobReceipt.hidden = true;
     acceptedRunId = "";
     jobFormStatus.textContent = "";
-    syncAssistantSetup({ prefill: true });
+    syncAssistantSetup();
     setComposerExpanded(true);
   }
 
@@ -732,10 +752,304 @@
     const acceptedTime = shortTime(acceptedAt);
     const queueState = status === "running" ? "Started" : "Queued";
     jobReceiptDetail.textContent = `${queueState}${acceptedTime ? ` ${acceptedTime}` : ""} · ` +
-      `Second Wind ${secondWind ? "on" : "off"} · policy and independent verification attached.`;
+      `${secondWind ? "one recovery try available" : "stop on first blocker"} · a different agent checks finished work.`;
     setComposerExpanded(false);
     jobReceipt.hidden = false;
     focusSoon(jobReceipt);
+  }
+
+  function closedWorkspaceToolInput(input, allowed) {
+    if (!input || typeof input !== "object" || Array.isArray(input)) {
+      throw new TypeError("tool input must be an object");
+    }
+    const extra = Object.keys(input).find((key) => !allowed.includes(key));
+    if (extra) throw new TypeError(`unsupported tool input: ${extra}`);
+    return input;
+  }
+
+  function workspaceToolText(value, label, maximum, { required = false, minimum = 0 } = {}) {
+    if (value === undefined || value === null) {
+      if (required) throw new TypeError(`${label} is required`);
+      return "";
+    }
+    if (typeof value !== "string") throw new TypeError(`${label} must be text`);
+    const normalized = value.trim();
+    if (required && normalized.length < Math.max(1, minimum)) {
+      throw new TypeError(`${label} is too short`);
+    }
+    if (normalized.length > maximum) throw new TypeError(`${label} is too long`);
+    return normalized;
+  }
+
+  function workspaceToolRunId(value, { required = true } = {}) {
+    const runId = workspaceToolText(value, "run_id", 128, { required });
+    if (runId && !/^r-[0-9a-z-]{3,77}$/.test(runId)) {
+      throw new TypeError("run_id is invalid");
+    }
+    return runId;
+  }
+
+  function requireWorkspaceToolSession(signal) {
+    if (signal?.aborted) throw new DOMException("Tool execution was cancelled", "AbortError");
+    if (!idToken && !sessionToken) throw new Error("Sign in to Rally before using workspace tools.");
+    if (dashboard.hidden) throw new Error("Open your Rally workspace before using this tool.");
+  }
+
+  function workspaceRunSummary(run) {
+    const done = Number(run.progress?.done ?? run.done_items ?? 0);
+    const total = Number(run.progress?.total ?? run.total_items ?? 0);
+    return {
+      run_id: String(run.run_id || "").slice(0, 128),
+      title: String(run.title || run.run_id || "Rally job").slice(0, 160),
+      status: String(run.status || "unknown").slice(0, 32),
+      checked: Number.isFinite(done) ? done : 0,
+      total_checks: Number.isFinite(total) ? total : 0,
+      updated_at: String(run.updated_at || run.created_at || "").slice(0, 64),
+    };
+  }
+
+  async function webMcpPrepareWorkspaceJob(input = {}, options = {}) {
+    input = closedWorkspaceToolInput(input, [
+      "title", "goal", "source_run_id", "second_wind",
+    ]);
+    requireWorkspaceToolSession(options.signal);
+    const title = workspaceToolText(input.title, "title", 160, { required: true });
+    const goal = workspaceToolText(input.goal, "goal", 6000, { required: true, minimum: 20 });
+    const sourceRunId = workspaceToolRunId(input.source_run_id, { required: false });
+    const secondWind = input.second_wind === undefined ? true : input.second_wind;
+    if (typeof secondWind !== "boolean") throw new TypeError("second_wind must be true or false");
+    selectedAutonomy = secondWind ? "resilient" : "guarded";
+    syncAssistantSetup();
+    showWorkspaceView("work", { focusHeading: false });
+    openJobComposer();
+    jobTitle.value = title;
+    jobGoal.value = goal;
+    jobSourceRun.value = sourceRunId;
+    jobSecondWind.checked = secondWind;
+    jobForm.querySelector(".job-continuity").open = Boolean(sourceRunId);
+    pendingJobIdempotencyKey = "";
+    jobFormStatus.textContent = "ChatGPT filled this job. Edit anything, then start it when it looks right.";
+    focusSoon(jobComposerTitle);
+    return {
+      status: "ready_for_review",
+      title,
+      source_run_id: sourceRunId || null,
+      second_wind: secondWind,
+      message: "The real Rally job form is open. Nothing has started yet.",
+    };
+  }
+
+  async function webMcpStartVisibleJob(input = {}, options = {}) {
+    closedWorkspaceToolInput(input, []);
+    requireWorkspaceToolSession(options.signal);
+    if (jobForm.hidden) {
+      throw new Error("Open or prepare a Rally job before starting it.");
+    }
+    const visibleTitle = jobTitle.value.trim();
+    const visibleGoal = jobGoal.value.trim();
+    if (!visibleTitle || !visibleGoal) throw new Error("Finish the visible Rally job before starting it.");
+    const receipt = await acceptVisibleJob({ signal: options.signal });
+    return {
+      status: receipt.status,
+      run_id: receipt.runId,
+      title: receipt.title,
+      accepted_at: receipt.acceptedAt,
+      second_wind: receipt.secondWind,
+      message: "Rally accepted the job. Its agents will appear in the open run as work begins.",
+    };
+  }
+
+  async function webMcpListWorkspaceJobs(input = {}, options = {}) {
+    input = closedWorkspaceToolInput(input, ["query", "limit"]);
+    requireWorkspaceToolSession(options.signal);
+    const query = workspaceToolText(input.query, "query", 120).toLocaleLowerCase();
+    const limit = input.limit === undefined ? 5 : input.limit;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 5) {
+      throw new TypeError("limit must be an integer from 1 to 5");
+    }
+    const payload = await workspaceApi("/v1/workspace/runs?limit=60", { signal: options.signal });
+    workspaceRuns = Array.isArray(payload.runs) ? payload.runs : [];
+    showWorkspaceView("work", { focusHeading: false });
+    activeRunFilter = "all";
+    runFilters.forEach((button) => {
+      const active = button.dataset.runFilter === "all";
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+    workSearch.value = query;
+    updateWorkMetrics();
+    renderRunList();
+    const matches = workspaceRuns.filter((run) => !query ||
+      `${run.title || ""} ${run.run_id || ""} ${run.status || ""}`.toLocaleLowerCase().includes(query));
+    return {
+      status: "ok",
+      count: Math.min(matches.length, limit),
+      runs: matches.slice(0, limit).map(workspaceRunSummary),
+      message: "The matching recent Rally jobs are visible in your workspace.",
+    };
+  }
+
+  async function webMcpOpenWorkspaceJob(input = {}, options = {}) {
+    input = closedWorkspaceToolInput(input, ["run_id"]);
+    requireWorkspaceToolSession(options.signal);
+    const runId = workspaceToolRunId(input.run_id);
+    const record = await workspaceApi(
+      `/v1/workspace/runs/${encodeURIComponent(runId)}`,
+      { signal: options.signal },
+    );
+    showWorkspaceView("work", { focusHeading: false });
+    activeRunId = runId;
+    renderRunList();
+    renderRunDetail(record);
+    runDetail.scrollIntoView({ behavior: reducedMotion.matches ? "auto" : "smooth", block: "start" });
+    focusSoon(runDetail);
+    return {
+      status: "ok",
+      run: workspaceRunSummary(record),
+      agents: (record.agents || []).slice(0, 3).map((agent) => ({
+        name: String(agent.name || agent.id || "Rally agent").slice(0, 60),
+        role: String(agent.role || agent.status || "").slice(0, 60),
+      })),
+      deliverables: (record.artifacts || []).slice(0, 3).map((artifact) => ({
+        filename: String(artifact.filename || "").slice(0, 100),
+        kind: String(artifact.kind || "file").slice(0, 32),
+        status: String(artifact.status || "unknown").slice(0, 32),
+      })),
+      message: "The real Rally run, its workers, checks, and available results are open.",
+    };
+  }
+
+  async function webMcpOpenWorkspaceConnection(input = {}, options = {}) {
+    input = closedWorkspaceToolInput(input, ["connector"]);
+    requireWorkspaceToolSession(options.signal);
+    const connectorId = workspaceToolText(input.connector, "connector", 64, { required: true });
+    if (!/^[a-z0-9-]{1,64}$/.test(connectorId)) throw new TypeError("connector is invalid");
+    showWorkspaceView("connections", { focusHeading: false });
+    await loadConnectionSetup({ signal: options.signal, rethrow: true });
+    requireWorkspaceToolSession(options.signal);
+    const card = document.querySelector(`[data-connector="${CSS.escape(connectorId)}"]`);
+    if (!card) throw new Error("That Rally connection is not available.");
+    card.scrollIntoView({ behavior: reducedMotion.matches ? "auto" : "smooth", block: "center" });
+    focusCardAction(connectorId);
+    const catalog = connectors.get(connectorId);
+    const record = connectionRecords.get(connectorId);
+    return {
+      status: String(record?.status || "not_connected").slice(0, 40),
+      connector: connectorId,
+      name: String(catalog?.name || connectorId).slice(0, 80),
+      approved_tools: Number(record?.tool_count || 0),
+      message: record
+        ? "The real Rally connection is open. Review its current access before changing anything."
+        : "The real Rally connection setup is open. You must complete any provider sign-in yourself.",
+    };
+  }
+
+  async function registerWorkspaceWebMcpTools() {
+    if (window.top !== window.self || typeof document.modelContext?.registerTool !== "function") {
+      if (workspaceWebMcpStatus) {
+        workspaceWebMcpStatus.classList.remove("is-ready");
+        workspaceWebMcpStatus.querySelector("b").textContent = "Use Rally’s buttons below.";
+        workspaceWebMcpStatus.querySelector("small").textContent = "ChatGPT cannot control this page in this browser.";
+      }
+      return;
+    }
+    workspaceWebMcpLifecycle?.abort();
+    const lifecycle = new AbortController();
+    workspaceWebMcpLifecycle = lifecycle;
+    window.addEventListener("pagehide", () => lifecycle.abort(), { once: true });
+    try {
+      await Promise.all([
+        document.modelContext.registerTool({
+          name: "rally_prepare_job",
+          title: "Prepare a Rally job",
+          description: "Open Rally's real signed-in job form and fill it for the person to edit. This does not start agents or spend model or media resources.",
+          inputSchema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["title", "goal"],
+            properties: {
+              title: { type: "string", minLength: 1, maxLength: 160 },
+              goal: { type: "string", minLength: 20, maxLength: 6000, description: "The finished result Rally's agents should deliver and how it will be checked." },
+              source_run_id: { type: "string", pattern: "^r-[0-9a-z-]{3,77}$", maxLength: 80, description: "Optional earlier run to reference in a new follow-up job; this does not resume that run." },
+              second_wind: { type: "boolean", default: true, description: "Let another Rally agent take over once if the first worker gets stuck." },
+            },
+          },
+          annotations: { readOnlyHint: false, untrustedContentHint: true },
+          execute: webMcpPrepareWorkspaceJob,
+        }, { signal: lifecycle.signal }),
+        document.modelContext.registerTool({
+          name: "rally_start_visible_job",
+          title: "Start the visible Rally job",
+          description: "Queue the exact job currently visible in Rally. This starts real, potentially billable agent and media work and returns a real run ID.",
+          inputSchema: { type: "object", additionalProperties: false, properties: {} },
+          annotations: { readOnlyHint: false, untrustedContentHint: true },
+          execute: webMcpStartVisibleJob,
+        }, { signal: lifecycle.signal }),
+        document.modelContext.registerTool({
+          name: "rally_list_my_jobs",
+          title: "Find my recent Rally jobs",
+          description: "Search the latest 60 jobs in the signed-in Rally workspace and show up to five matches. This does not change a job.",
+          inputSchema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              query: { type: "string", maxLength: 120 },
+              limit: { type: "integer", minimum: 1, maximum: 5, default: 5 },
+            },
+          },
+          annotations: { readOnlyHint: true, untrustedContentHint: true },
+          execute: webMcpListWorkspaceJobs,
+        }, { signal: lifecycle.signal }),
+        document.modelContext.registerTool({
+          name: "rally_open_job",
+          title: "Open a Rally job",
+          description: "Open one real signed-in Rally run and show its agents, checks, progress, and available results. This does not change the run.",
+          inputSchema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["run_id"],
+            properties: { run_id: { type: "string", pattern: "^r-[0-9a-z-]{3,77}$", maxLength: 80 } },
+          },
+          annotations: { readOnlyHint: true, untrustedContentHint: true },
+          execute: webMcpOpenWorkspaceJob,
+        }, { signal: lifecycle.signal }),
+        document.modelContext.registerTool({
+          name: "rally_open_connection",
+          title: "Open a Rally connection",
+          description: "Open the real Rally setup for one business service. This never enters credentials, signs in to a provider, or grants access for the person.",
+          inputSchema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["connector"],
+            properties: { connector: { type: "string", pattern: "^[a-z0-9-]{1,64}$", maxLength: 64 } },
+          },
+          annotations: { readOnlyHint: true, untrustedContentHint: true },
+          execute: webMcpOpenWorkspaceConnection,
+        }, { signal: lifecycle.signal }),
+      ]);
+      if (
+        lifecycle.signal.aborted ||
+        workspaceWebMcpLifecycle !== lifecycle ||
+        (!idToken && !sessionToken) ||
+        dashboard.hidden
+      ) return;
+      document.documentElement.dataset.webmcpWorkspace = "ready";
+      if (workspaceWebMcpStatus) {
+        workspaceWebMcpStatus.classList.add("is-ready");
+        workspaceWebMcpStatus.querySelector("b").textContent = "ChatGPT can use this signed-in Rally workspace.";
+        workspaceWebMcpStatus.querySelector("small").textContent = "Ask it to prepare a job, start it after confirmation, or open a result.";
+      }
+    } catch (error) {
+      console.warn("Rally workspace tools were unavailable", error instanceof Error ? error.name : "Error");
+      lifecycle.abort();
+      const currentLifecycle = workspaceWebMcpLifecycle === lifecycle;
+      if (currentLifecycle) workspaceWebMcpLifecycle = null;
+      if (currentLifecycle && workspaceWebMcpStatus && !dashboard.hidden) {
+        workspaceWebMcpStatus.classList.remove("is-ready");
+        workspaceWebMcpStatus.querySelector("b").textContent = "Use Rally’s buttons below.";
+        workspaceWebMcpStatus.querySelector("small").textContent = "ChatGPT could not connect to this page.";
+      }
+    }
   }
 
   function renderTeammates() {
@@ -1219,11 +1533,11 @@
     const waiting = element("div", "run-detail-empty is-queued");
     waiting.append(
       element("span", "", "✓"),
-      element("h2", "", "Accepted and queued"),
+      element("h2", "", "Rally job queued"),
       element(
         "p",
         "",
-        `${title || "This job"} is safely in Rally. Its checklist and worker activity will appear here as execution starts.`,
+        `${title || "This job"} is waiting for Rally’s agents. Their work and checks will appear here when execution starts.`,
       ),
       element("code", "", runId),
     );
@@ -1461,7 +1775,7 @@
     connectionCounts.forEach((count) => { count.textContent = String(certified); });
   }
 
-  async function loadConnectionSetup() {
+  async function loadConnectionSetup({ signal = null, rethrow = false } = {}) {
     grid.setAttribute("aria-busy", "true");
     document.querySelectorAll("[data-connector]").forEach((card) => {
       const state = card.querySelector(".connection-state");
@@ -1471,11 +1785,12 @@
     });
     try {
       const [catalog, stored] = await Promise.all([
-        api("/v1/connectors"),
-        api("/v1/connections"),
+        api("/v1/connectors", signal ? { signal } : {}),
+        api("/v1/connections", signal ? { signal } : {}),
       ]);
       connectors = new Map((catalog.connectors || []).map((item) => [item.id, item]));
       updateCards(stored.connections || []);
+      return true;
     } catch (error) {
       connectors = new Map();
       connectionRecords = new Map();
@@ -1492,6 +1807,8 @@
       if (connectionsView && !connectionsView.hidden) {
         showToast(error.message || "Connections are temporarily unavailable.", "warning");
       }
+      if (rethrow) throw error;
+      return false;
     } finally {
       grid.setAttribute("aria-busy", "false");
     }
@@ -1507,6 +1824,7 @@
     const initialView = new Set(["work", "teammates", "workforce", "connections", "policy"])
       .has(requestedView) ? requestedView : "work";
     showWorkspaceView(initialView, { focusHeading: false });
+    void registerWorkspaceWebMcpTools();
     const [workspaceLoaded] = await Promise.all([
       loadWorkspaceRuns(),
       loadTeammateSetup(account),
@@ -2001,9 +2319,9 @@
     focusSoon(runDetail);
   });
 
-  jobForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    if (!jobForm.reportValidity()) return;
+  async function acceptVisibleJob({ signal = null } = {}) {
+    if (!idToken && !sessionToken) throw new Error("Sign in again to start this Rally job.");
+    if (!jobForm.reportValidity()) throw new Error("Finish the visible job before starting it.");
     const title = jobTitle.value.trim();
     const goal = jobGoal.value.trim();
     const sourceRunId = jobSourceRun.value.trim();
@@ -2011,7 +2329,7 @@
     if (!title || !goal) {
       jobFormStatus.textContent = "Add a title and a clear definition of done.";
       focusSoon(!title ? jobTitle : jobGoal);
-      return;
+      throw new Error("Add a title and a clear definition of done.");
     }
     const payload = { title, goal, second_wind: secondWind };
     if (sourceRunId) payload.source_run_id = sourceRunId;
@@ -2019,12 +2337,13 @@
 
     jobSubmit.disabled = true;
     jobForm.setAttribute("aria-busy", "true");
-    jobFormStatus.textContent = "Accepting the job and attaching workspace policy…";
+    jobFormStatus.textContent = "Starting Rally job…";
     try {
       const result = await workspaceApi("/v1/workspace/jobs", {
         method: "POST",
         headers: { "Idempotency-Key": pendingJobIdempotencyKey },
         body: JSON.stringify(payload),
+        ...(signal ? { signal } : {}),
       });
       const runId = acceptedRunIdFrom(result);
       if (!runId) {
@@ -2047,13 +2366,24 @@
       jobForm.querySelector(".job-continuity").open = false;
       jobFormStatus.textContent = "";
       showJobAcceptance({ runId, title, status, acceptedAt, secondWind });
-      showToast(`${title} was accepted into Rally. Its governed record is open below.`);
+      showToast(`Rally started ${title}. The job is open below.`);
       await loadWorkspaceRuns({ openRunId: runId, provisional });
+      return { runId, title, status, acceptedAt, secondWind };
     } catch (error) {
       jobFormStatus.textContent = error.message || "Rally could not accept this job. Nothing was queued.";
+      throw error;
     } finally {
       jobSubmit.disabled = false;
       jobForm.setAttribute("aria-busy", "false");
+    }
+  }
+
+  jobForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      await acceptVisibleJob();
+    } catch (error) {
+      jobFormStatus.textContent = error.message || "Rally could not accept this job. Nothing was queued.";
     }
   });
   jobForm.addEventListener("input", () => {

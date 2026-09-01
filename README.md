@@ -15,13 +15,13 @@ send, or deploy.
 
 | Judge surface | Location |
 |---|---|
-| **Live demo** | [Verified Cloudflare preview](https://webmcp-challenge.agent9-rally.pages.dev/webmcp/) · production promotion pending |
+| **Live demo** | [https://rally.agent9.dev/webmcp/](https://rally.agent9.dev/webmcp/) |
 | Local demo | `http://127.0.0.1:8765/webmcp/` |
 | Implementation | [`site/webmcp/app.js`](site/webmcp/app.js) |
 | Challenge change record | [`HACKATHON_CHANGES.md`](HACKATHON_CHANGES.md) |
 | Requirements sourcebook | [`docs/WEBMCP-CHALLENGE-SOURCEBOOK.md`](docs/WEBMCP-CHALLENGE-SOURCEBOOK.md) |
 
-> HTTP delivery and security headers are verified on the preview. Actual tool
+> HTTP delivery and security headers are verified on the production URL. Actual tool
 > discovery in ChatGPT's in-app browser remains a required release gate before
 > the production URL is entered in Devpost.
 

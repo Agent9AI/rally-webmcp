@@ -15,6 +15,8 @@ help:
 
 test:
 	@python3 -m unittest discover -s tests -v
+	@node tests/test_webmcp_runtime.mjs
+	@node tests/test_webmcp_studio_runtime.mjs
 
 cloud-test:
 	@uv run --project cloud ruff check cloud
@@ -36,7 +38,7 @@ release-check: test cloud-test infra-check
 	@cd src/worker && wrangler deploy --dry-run --outdir /tmp/rally-worker-build
 	@git diff --check
 	@git diff --cached --check
-	@echo "release gates passed: 376 automated tests, Terraform, Worker bundle, syntax, whitespace"
+	@echo "release gates passed: 380 automated tests, Terraform, Worker bundle, syntax, whitespace"
 
 check:
 	@./bin/rally --check

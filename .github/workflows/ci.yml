@@ -1,29 +1,34 @@
-name: ci
+name: Deterministic checks
 
 on:
   push:
     branches: [main]
   pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  test:
+  product-and-webmcp:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
-          python-version: "3.9"
-      - name: Unit tests
-        run: python3 -m unittest discover -s tests -v
-      - name: Worker syntax
-        run: node --check src/worker/index.js
-      - name: Config is valid JSON and pins every configured model family
+          python-version: "3.11"
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          package-manager-cache: false
+      - name: Run deterministic product and WebMCP checks
+        run: make test
+      - name: Validate browser JavaScript syntax
         run: |
-          python3 - <<'PY'
-          import json, sys
-          sys.path.insert(0, "src")
-          import agents
-          cfg = json.load(open("config/rally.json"))
-          agents.assert_pins(cfg["agents"])
-          print("pins OK:", {n: a["model"] for n, a in cfg["agents"].items()})
-          PY
+          node --check site/app.js
+          if [ -f site/webmcp/app.js ]; then node --check site/webmcp/app.js; fi

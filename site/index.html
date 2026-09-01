@@ -25,9 +25,9 @@
 
     <div class="event-bar">
       <span class="google-dots" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-      <span>Built for the All Things Agentic Hackathon</span>
+      <span>Built for the WebMCP Challenge</span>
       <span class="event-separator" aria-hidden="true"></span>
-      <strong>Fortified Enterprise Fleet</strong>
+      <strong><a href="webmcp/">Open the Rally for WebMCP studio →</a></strong>
     </div>
 
     <header class="site-header" data-header>
@@ -36,6 +36,7 @@
         <span class="brand-name">Rally</span>
       </a>
       <nav class="nav-links" aria-label="Primary navigation">
+        <a href="webmcp/">WebMCP studio</a>
         <a href="#how">How it works</a>
         <a href="#connectors">Connectors</a>
         <a href="#demo">Live proof</a>
@@ -315,10 +316,10 @@
           </article>
           <article class="test-card">
             <div class="card-header"><div><span class="terminal-icon">›_</span><b>Product safety checks</b></div><span class="status-chip complete">Green</span></div>
-            <pre><code>190 runner + ingress + policy + site
+            <pre><code>194 runner + ingress + policy + WebMCP
 186 Cloud, A2A + connector security
 ───
-376 automated tests
+380 automated tests
 
 ✓ Terraform validated
 ✓ Worker bundle verified
@@ -375,7 +376,7 @@
           <details><summary>What stays private?</summary><p>Commissioner identity, worktree paths, mail IDs, raw prompts, credentials, and cloud request keys never enter the public console record.</p></details>
           <details><summary>When do administrators connect Gemini, Claude, OpenAI, or Grok?</summary><p>AI workforce authorization is separate from company systems. The current pilot uses provider-approved identities on its controlled execution host. The self-service design starts each provider’s official OAuth or device-code flow on a user-bound host, with an existing API key offered as an alternative route. Rally never asks for a consumer password or copies a browser session cookie.</p></details>
           <details><summary>Are AI and business-system connections shared between users?</summary><p>No. Model identities, company-system grants, and run authority are separate. Rally namespaces each user’s approved systems and tools, then freezes only the commissioned scope into that run.</p></details>
-          <details><summary>Can a browser agent use Rally directly?</summary><p>Yes. Rally exposes three WebMCP tools in supported browsers: search the live public run index, inspect a run’s verification record, and prepare a governed job draft in the visible onboarding panel. The browser agent shares the page state with you, but it cannot submit the job, send email, grant access, or bypass your confirmation.</p></details>
+          <details><summary>Can a browser agent use Rally directly?</summary><p>Yes. Rally exposes five WebMCP tools in supported browsers: search the live public run index, inspect a verification record, prepare a governed job, stage a WebMCP Challenge song for Lyria 3 Pro, and review the human-edited creative task. The browser agent shares the page state with you, but it cannot submit the job, generate the song, send email, grant access, or bypass your confirmation.</p></details>
           <details><summary>Can Rally connect a custom MCP server?</summary><p>Not through an arbitrary URL box. Custom remote MCP is a Labs path that must pass HTTPS and network admission, OAuth origin checks, bounded discovery, schema fingerprint review, exact tool policy, payload ceilings, and one-time approval for writes. WebMCP is complementary: Rally uses it for human-present browser collaboration, while asynchronous jobs continue through the governed server-side gateway.</p></details>
           <details><summary>What does “give Rally a job” mean?</summary><p>Ask for a finished professional outcome—such as a sourced market briefing, an executive presentation, a customer-risk review, or a launch plan—then grant only the sources, limits, and approval rules that outcome needs.</p></details>
           <details><summary>Are the business connectors live?</summary><p>The governed gateway and all ten provider adapters are implemented. BigQuery has completed a real authenticated handshake with Google’s official MCP endpoint and discovered six tools. The other accounts are intentionally shown as disconnected until each user completes provider setup, authentication, live discovery, and an exact safe preset. Rally never turns “adapter exists” into “customer account connected.”</p></details>
@@ -393,7 +394,7 @@
         </a>
         <a class="webmcp-trust-badge" href="https://github.com/webmachinelearning/webmcp">
           <span class="webmcp-mark" aria-hidden="true"><svg viewBox="0 0 32 32"><rect x="3.5" y="5" width="25" height="22" rx="5"/><path d="M4 11h24M10 8h.1M7 8h.1M13 8h.1M11 19l3 3 7-8"/></svg></span>
-          <span><b>WebMCP enabled</b><small>3 browser tools · human-confirmed</small></span>
+          <span><b>WebMCP enabled</b><small>5 browser tools · human-confirmed</small></span>
         </a>
       </div>
     </aside>
@@ -413,10 +414,27 @@
       <section class="setup-panel is-active" data-setup-panel="managed">
         <div class="setup-promise"><b>Start with email. Connections are optional.</b><span>Commission useful work from the request and attachments now, then add approved company context whenever you are ready.</span></div>
         <div class="webmcp-ready" data-webmcp-status><span>WebMCP agent-ready</span><p>Your browser agent can prepare this visible draft with you. It cannot send, submit, or widen authority.</p></div>
+        <section class="webmcp-task-receipt" data-webmcp-task-receipt hidden aria-live="polite">
+          <header>
+            <div><span class="webmcp-task-mark" aria-hidden="true">♫</span><div><p>Shared creative task</p><h3 data-webmcp-task-title>Lyria challenge song staged</h3></div></div>
+            <span class="webmcp-task-state" data-webmcp-task-state>Awaiting review</span>
+          </header>
+          <div class="webmcp-task-facts">
+            <div><span>Generator</span><b data-webmcp-task-model>Lyria 3 Pro</b></div>
+            <div><span>Artifact</span><b data-webmcp-task-artifact>Original MP3 song</b></div>
+            <div><span>Authority</span><b>Human confirmation</b></div>
+            <div><span>Approval</span><b>Different model family</b></div>
+          </div>
+          <div class="webmcp-collaboration-trace">
+            <header><b>WebMCP collaboration trail</b><span>Page-local · no browser history</span></header>
+            <ol data-webmcp-trace></ol>
+          </div>
+          <p data-webmcp-task-note>The agent prepared this brief beside you. Edit the outcome below, then ask it to review the visible task before you decide whether to commission it.</p>
+        </section>
         <div class="job-draft-fields" data-job-draft>
           <label><span>Company</span><input type="text" maxlength="120" autocomplete="organization" placeholder="Your company" data-job-company></label>
           <label><span>Team</span><input type="text" maxlength="120" autocomplete="organization-title" placeholder="Team or function" data-job-team></label>
-          <label class="job-field-wide"><span>Outcome</span><textarea maxlength="2000" rows="4" placeholder="The finished professional outcome Rally should deliver" data-job-goal></textarea></label>
+          <label class="job-field-wide"><span>Outcome</span><textarea maxlength="4000" rows="6" placeholder="The finished professional outcome Rally should deliver" data-job-goal></textarea></label>
           <label class="job-field-wide"><span>Trusted systems <small>optional</small></span><input type="text" maxlength="320" placeholder="Skip this, or name approved systems such as Drive or Slack" data-job-systems></label>
           <details class="job-field-wide advanced-job"><summary>Relate this to an existing Rally run</summary><label><span>Run ID</span><input type="text" maxlength="128" placeholder="A blocked or related Rally run ID" data-job-source-run></label></details>
         </div>

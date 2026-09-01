@@ -1,647 +1,297 @@
-<p align="center">
-  <a href="https://rally.agent9.dev/">
-    <img src="site/og-card.png" width="100%" alt="Rally turns one familiar message into a coordinated, independently verified result">
-  </a>
-</p>
+# Rally for WebMCP
 
-<h1 align="center">Rally — the accountable AI team</h1>
+### Accountable browser collaboration on one visible, human-editable page
 
-<p align="center">
-  <strong>Give Rally the outcome. It coordinates the work, the challenge, and the proof.</strong>
-</p>
+Rally for WebMCP is a shared browser studio where a person and an AI agent
+prepare consequential work together through real, structured WebMCP tools. The
+agent can stage an original Lyria song brief, stage an Agent9 Insights article,
+or stage governed MCP connector onboarding. Every result appears in the page
+for the person to inspect and rewrite before anything is allowed to leave it.
 
-<p align="center">
-  One request enters by email or private dashboard. Gemini, Claude, and Codex
-  work one governed checklist. A different model family must verify every item.
-</p>
+The submitted studio exposes **four top-level imperative WebMCP tools**. They
+change page state and produce compact receipts; they do **not** generate audio,
+call n8n, create an EmDash record, connect an MCP server, store data, publish,
+send, or deploy.
 
-<p align="center">
-  <a href="https://rally.agent9.dev/">Open Rally</a> ·
-  <a href="https://rally.agent9.dev/#demo">Inspect a real run</a> ·
-  <a href="studio/demo-teleprompter.html">Demo teleprompter</a> ·
-  <a href="#reproduce-rally">Run it</a> ·
-  <a href="docs/ARCHITECTURE.md">Architecture</a> ·
-  <a href="docs/SECURITY.md">Security</a> ·
-  <a href="docs/JUDGE-PACKET.md">Judge packet</a>
-</p>
-
-<p align="center">
-  <sub><a href="https://allthingsagentichackathon.devpost.com/rules">All Things Agentic Hackathon</a> · Fortified Enterprise Fleet · Gemini 3.7 + Google ADK · Apache-2.0</sub>
-</p>
-
----
-
-## AI should remove coordination work, not create more of it
-
-A five-person firm can already subscribe to Gemini, Claude, and ChatGPT. That
-still leaves a person copying context between tabs, dispatching every step,
-reconciling conflicting answers, and deciding whether the final result is true.
-
-Rally turns those disconnected capabilities into one accountable AI teammate.
-An owner, operator, or team lead asks for a finished outcome—not a chain of
-prompts. Rally preserves the goal, assigns the work across distinct model
-families, rejects self-approval, and returns one result with evidence and
-residual risk where the request began.
-
-> **One request. Three model families. Zero self-approval.**
-
-## Judge fast path
-
-Rally is built directly around the
-[official 40 / 30 / 30 rubric](https://allthingsagentichackathon.devpost.com/rules),
-with inspectable evidence for every claim.
-
-| Criterion | What Rally proves | Start here |
-|---|---|---|
-| **Innovation & operational utility — 40%** | A nontechnical owner commissions a complex outcome by email or dashboard; specialized models research, draft, challenge, repair, and verify without human dispatch | [Real run](https://rally.agent9.dev/#demo) · [13-turn receipt](#one-email-thirteen-governed-turns-one-result) |
-| **Architectural discipline & tech stack — 30%** | Strict agent authority, failure-tolerant Second Wind routing, durable state, replay protection, and a load-bearing Gemini + ADK + Google Cloud path | [Architecture](#architecture-cloud-coordination-licensed-execution-deterministic-authority) · [security](docs/SECURITY.md) |
-| **Demo & production readiness — 30%** | A 13-turn email workflow with a committed audited checkpoint and disclosed closure gap, 376 deterministic tests, a 6/6 live ADK evaluation, digest-pinned deployment, and reproducible setup | [Evidence](#evidence-before-adjectives) · [run it](#reproduce-rally) · [judge packet](docs/JUDGE-PACKET.md) |
-
-Devpost's manager [confirmed](https://allthingsagentichackathon.devpost.com/forum_topics/44900-rules-track-names-multi-agent-nexus-etc-vs-official-categories-which-applies-to-fleet)
-that Fortified Enterprise Fleet uses the “Multi-Agent Nexus” architecture test:
-strict separation of concerns and failure-tolerant inter-agent routing.
-
-## One email. Thirteen governed turns. One result.
-
-Run `r-20260831-48141a` is real release evidence, not a scripted sample. The
-owner of a five-person professional-services firm emailed Rally for a sourced
-90-day Google AI adoption brief. Rally coordinated Gemini, Claude, and OpenAI
-Codex in an isolated workspace and returned an executive report in the original
-thread. The repository includes a [sanitized evidence bundle](docs/evidence/)
-so judges can inspect the proof without receiving private mail metadata.
-
-| Receipt | Verified result |
-|---|---:|
-| Governed turns | 13 |
-| Checklist | 6/6 independently verified |
-| Worker families | Google, Anthropic, OpenAI |
-| Audited checkpoint | 882 words at workspace commit `2fa5f26` |
-| Claim audit | 22/22 audited claims supported at that checkpoint |
-| Primary sources | 13 official Google URLs |
-| Delivery | Executive report delivered by email |
-| Full receipt | [Artifacts, hashes, checklist, and disclosure](docs/evidence/r-20260831-48141a/) |
-
-The interesting result was not that three models agreed. They did not.
-
-1. Gemini researched the official source set and Claude produced the first
-   executive brief.
-2. Codex audited 23 product claims against live Google pages and rejected the
-   artifact: two assertions were unsupported and one was overstated.
-3. Claude removed the false discount, corrected the platform description,
-   replaced a false default-setting claim, and added five stronger primary
-   sources.
-4. Gemini still rejected the revision because one citation did not support the
-   phrase “no separate integration.”
-5. Codex audited again and found that same unsupported phrase plus a repeated
-   price claim without an inline citation. Claude repaired both.
-6. Codex produced a 22-claim audit of the 882-word checkpoint; Claude
-   independently re-fetched the sources and verified that audit.
-7. In the same verifying turn, Claude added one promotion claim and requested a
-   seventh checklist item because it could not approve its own change. Rally
-   rejected the late scope addition, but did not invalidate the earlier artifact
-   verification before report delivery, leaving the workspace at 897 words.
-
-That last event is a real boundary, not a hidden footnote. Rally enforces
-checklist scope and owner/verifier separation, but this run exposed a remaining
-hardening need: any artifact mutation after verification must reopen the
-affected item. The public evidence therefore makes the narrow, reproducible
-claim—**22/22 supported claims in the committed 882-word checkpoint**—and does
-not present the later 897-word file as fully audited.
-
-### What Second Wind proved
-
-At turn three, Codex reported that its audit item was blocked because the brief
-did not yet exist. Rally used one of two allowed **Second Wind** handoffs and
-gave the blocker to Claude. The backup confirmed that the prerequisite was
-genuinely missing, so Rally recorded the recovery as unresolved instead of
-manufacturing progress. An authenticated human reply later reopened only the
-blocked item; it did not change the budget, select its verifier, or relax the
-completion rule.
-
-That is the recovery contract: try another family from the last accepted state,
-but stop honestly when a handoff cannot make the work safe.
-
-A separate public run, [`r-20260830-447f2f`](https://rally.agent9.dev/#demo),
-shows the successful path: Claude failed while holding item `c6`, Rally handed
-custody to Gemini from the last accepted state, and the runner recorded
-`SECOND WIND RECOVERED`. Recovery changed the worker—not the checklist, budget,
-or independent-verification rule. The two runs are kept separate so their
-receipts cannot be mixed into a better-looking story.
-
-## What using Rally feels like
-
-Rally hides model routing without hiding accountability.
-
-| Step | The administrator chooses | Rally handles underneath |
-|---|---|---|
-| 1. Select a teammate | Executive strategist, security lead, or creative director | A stable business role, accountable owner, and bounded system prompt |
-| 2. Set expertise and autonomy | Depth plus guarded or resilient execution | Model pins, budgets, review rules, and Second Wind ceiling |
-| 3. Approve company systems | Only the assets needed for this role | Per-user grants, safe presets, capability discovery, and receipts |
-| 4. Choose a channel | Private dashboard or email | The same durable commission queue and governed runner |
-
-Email is the easiest front door, not the whole product. The authenticated
-workspace shows the work queue, run detail, checklist ownership, verification
-receipts, teammates, policy, and connections. A manual dashboard request enters
-the same D1 queue and execution path as signed email; it is not a second demo
-backend.
-
-## The rule no model can negotiate
-
-Every checklist item follows:
-
-```text
-open → claimed → awaiting-verification → done
-```
-
-The runner rejects the final transition unless:
-
-```text
-owner != verified_by
-```
-
-Startup separately refuses a fleet whose workers do not belong to distinct
-model families. Prompts ask agents to respect those rules; deterministic Python
-enforces them after every turn. Model prose is evidence to evaluate, never
-authority to complete work, widen scope, change budgets, or approve itself.
-
-## Architecture: cloud coordination, licensed execution, deterministic authority
-
-![Rally hybrid architecture](docs/assets/rally-architecture.svg)
-
-Rally is deliberately hybrid. Google Cloud owns durable authenticated
-coordination, identity, credential security, and metadata-only observability.
-The controlled workstation owns licensed provider CLI execution. The local
-runner owns the authoritative checklist and completion decision.
-
-| Layer | Responsibility | Trust boundary |
-|---|---|---|
-| Resend + Cloudflare Worker + D1 | Verify inbound delivery, deduplicate, queue email and dashboard commissions, expose sanitized receipts | Cannot approve a sender or complete work |
-| Gemini 3.7 Flash + Google ADK on private Cloud Run | Required model-mediated intake and one bounded handoff | Advisory model output cannot alter policy or files |
-| Firestore | Atomic commission claims, leases, attempt fencing, coordinator state, tenant-scoped setup records | Not the authoritative local checklist and not a Memory Bank |
-| Deterministic Rally runner | Authenticate the commissioner, dispatch turns, reconcile transitions, enforce budgets, recover or halt | Models cannot modify this authority |
-| Claude, Antigravity/Gemini, and Codex CLIs | Research, build, test, reject, repair, and verify in an isolated git workspace | Separate provider sign-ins; no pooled credential or self-verification |
-| Resend + private dashboard projection | Return the report and expose bounded evidence | No raw prompts, credentials, or private model traces in the public console |
-
-The Worker acknowledges a commission only after successful handling. Firestore
-claims the original request key transactionally, leases recoverable attempts,
-and fences stale writers. The runner persists every accepted state transition.
-A crashed worker can therefore cost time without duplicating the commission or
-erasing accepted work.
-
-## Why Google Cloud is load-bearing
-
-Rally does not call Gemini once for a badge. The Google path is required before
-workspace execution begins.
-
-- **Gemini 3.7 Flash through Vertex AI and Google ADK** receives the commission,
-  invokes one exact handoff tool, and returns a fixed privacy-preserving receipt.
-- **Cloud Run** separates the private coordinator from the browser-facing
-  control plane. The customer control-plane identity cannot invoke the private
-  coordinator.
-- **Firestore** provides atomic idempotency, leases, attempt fencing, browser
-  sessions, tenant-scoped teammate records, and encrypted-vault metadata.
-- **Cloud IAM plus a Secret Manager application token** form two independent
-  authentication gates around the private coordinator.
-- **Cloud KMS** wraps a fresh AES-256-GCM data key for each stored connector
-  credential; Firestore receives ciphertext, a wrapped key, and non-secret
-  status metadata.
-- **Cloud Trace and OpenTelemetry** prove execution while prompt and response
-  capture remain disabled.
-- **Artifact Registry and Cloud Build** produce digest-addressed images that
-  Terraform pins to each Cloud Run service.
-
-The six-case live ADK evaluation scores **1.00 tool trajectory** and **1.00
-response quality**. It includes normal commissions, executive-outcome requests,
-and attempts to bypass independent review.
-
-### Live Google media deliverables
-
-Rally can now turn an explicit email or dashboard request into a real file—not
-just prose. Live Vertex calls produced a [69.96-second All Things Agentic song
-with Lyria 3 Pro](docs/evidence/media/all-things-agentic-lyria-3-pro.mp3), a
-[▶ 73.33-second soulful hip-hop variant in a GitHub-native player](docs/evidence/media/all-things-agentic-soulful-hip-hop-lyria-3-pro.mp4),
-and two live image outputs: a [1024×1024 beagle](docs/evidence/media/beagle-gemini-image.png)
-from Gemini 2.5 Flash Image plus [accountable-AI cover art](docs/evidence/media/rally-accountable-ai-nano-banana-2.png)
-from Gemini 3.1 Flash Image (**Nano Banana 2**). The repository preserves their
-hashes, dimensions, model IDs, and non-secret
-[generation receipt](docs/evidence/media/generation-receipt.json). The exact
-[provider-facing prompt for the hip-hop version](docs/evidence/media/all-things-agentic-soulful-hip-hop-prompt.md)
-is preserved verbatim and independently hash-matched to that receipt.
-
-The media call is a bounded tool action, not permission to self-approve. Rally
-writes the output inside the run workspace, workers inspect it under the same
-checklist, and a different model family must verify it. Only then does the
-executive email attach the song or image; images also use Resend CID for an
-inline preview. Replying in the thread creates a new revision item, so “make the
-chorus funnier” or “use a warmer background” resumes the same accountable job.
-
-The [Devpost featured image](docs/assets/rally-devpost-featured-google-style.png)
-is separate presentation artwork: a deterministic Rally brand composition in
-a clean Google-style visual language, not a Nano Banana generation. The
-accountable-AI cover linked above remains the live image-model proof.
-
-The connection is explicit: Rally calls **Vertex AI** in the configured Google
-Cloud project with short-lived Application Default Credentials. Lyria 3 Pro and
-Gemini image generation are workspace capabilities behind Rally's policy gate;
-they are not unlocked by a consumer Gemini subscription, Google sign-in, or the
-Google Workspace connector. A hosted deployment grants the runtime service
-identity only the required Vertex permission and meters the capability for its
-workspaces; a bring-your-own-cloud deployment points the same boundary at the
-customer's project without collecting a long-lived key. The runtime default is
-now `gemini-3.1-flash-image` (**Nano Banana 2**). Both image records retain the
-model actually used: the newer cover proves the current route, while the beagle
-receipt honestly preserves the older model used for that earlier call.
-
-### Deployment receipt
-
-| Surface | Release anchor |
+| Judge surface | Location |
 |---|---|
-| Google Cloud project | `rally-agent9-2026` |
-| Private ADK coordinator | `rally-google-coordinator-00007-xpq`, `us-east1` |
-| Authenticated customer control plane | `rally-control-plane-00011-pg6` |
-| Both Cloud Run services | image `sha256:b1836e2224518a8bed51da7e02ef256aeba1aeeae858808f470a0d02d33fa6e2` |
-| Release Cloud Build | `58a580b6-c6d2-45d6-945b-8fc1bb643cd5` (`SUCCESS`) |
-| Durable ingress Worker | `rally-ingress` · version `295418b0-6661-428a-b185-d04177c0cbe3` |
-| Private verified-artifact store | R2 bucket `rally-artifacts` · ENAM · tenant-scoped object keys |
-| Public application | [rally.agent9.dev](https://rally.agent9.dev/) · Pages deployment [`68b4b726.agent9-rally.pages.dev`](https://68b4b726.agent9-rally.pages.dev/) |
+| **Live demo** | [Verified Cloudflare preview](https://webmcp-challenge.agent9-rally.pages.dev/webmcp/) · production promotion pending |
+| Local demo | `http://127.0.0.1:8765/webmcp/` |
+| Implementation | [`site/webmcp/app.js`](site/webmcp/app.js) |
+| Challenge change record | [`HACKATHON_CHANGES.md`](HACKATHON_CHANGES.md) |
+| Requirements sourcebook | [`docs/WEBMCP-CHALLENGE-SOURCEBOOK.md`](docs/WEBMCP-CHALLENGE-SOURCEBOOK.md) |
 
-These identifiers are reproducible recording anchors, not substitutes for the
-live Cloud Run, Firestore, IAM, and content-free Trace evidence shown in the
-demo.
+> HTTP delivery and security headers are verified on the preview. Actual tool
+> discovery in ChatGPT's in-app browser remains a required release gate before
+> the production URL is entered in Devpost.
 
-## Security that remains outside the chat loop
+## Three showcases, one WebMCP-native loop
 
-- A Resend/Svix signature is verified over the raw webhook body; D1 event IDs
-  and Firestore request keys make delivery replay-safe.
-- The private coordinator requires a short-lived, service-audience Google IAM
-  token **and** a separate application token compared in constant time.
-- Google administrator sign-in and Google Workspace authorization are separate
-  grants. Signing into Rally does not silently grant Gmail or Drive access.
-- Browser identity is carried in one dedicated application header. Raw Google
-  ID tokens, Rally sessions, connector credentials, and provider callbacks are
-  never returned by a vault API.
-- Every hosted connector secret is encrypted with per-connection envelope
-  encryption. Models receive tool capability, not a provider credential.
-- Consequential connector calls require an exact, expiring, one-use approval
-  bound to run, connector, tool, and full argument digest.
-- Turn, stagnation, dispute, send, wall-clock, and recovery ceilings are checked
-  before the next model invocation.
-- Telemetry records request ID, run ID, event, status, duplicate flag, latency,
-  and trace linkage—not prompt or response bodies.
+| Showcase | What the browser agent does | Truthful stopping point |
+|---|---|---|
+| **Original Lyria song** | Stages a complete, editable WebMCP Challenge song commission: smooth West Coast storytelling, fully original lyrics, exact `lyria-3-pro-preview` pin, provenance requirements, and independent listening review | Brief only. Lyria is not called and no audio exists |
+| **Agent9 Insights** | Stages a title, deck, and article explaining WebMCP, Rally, MCP, A2A, and the human decision boundary | Page draft only. After a separate human approval, a governed Rally executor may route a bounded payload through one allowlisted n8n MCP workflow to create an EmDash `journal` draft; this studio does not invoke that route or publish |
+| **Governed MCP onboarding** | Stages a human-editable admission plan for one fixed n8n, Cloudflare, GitHub, or Google Workspace profile | Plan only. No arbitrary URL, credential, OAuth grant, discovery request, authorization, or connection is accepted |
 
-## Connections: implemented boundaries, honest availability
+Each showcase follows the same collaboration pattern:
 
-Rally ships ten pinned, deny-by-default gateway adapters and provider-safe
-presets for Google Workspace, Slack, GitHub, Cloudflare Observability, n8n,
-Stripe, BigQuery, Atlassian, Salesforce, and Hyperagent. Each run receives an
-immutable, user-bound authority snapshot. Claude receives a strict MCP config;
-Codex ignores unrelated global MCP configuration; Antigravity preflight refuses
-connector runs unless Rally is its only enabled MCP server.
+```text
+browser agent stages v1
+        ↓
+person sees and edits the same page state
+        ↓
+browser agent reviews the visible revision as untrusted data
+        ↓
+person retains the consequential decision
+```
 
-That catalog is not a “connected” claim. **BigQuery authenticated MCP discovery
-and six-tool enumeration are live-proven.** Other hosted cards remain disabled
-until Rally owns the provider registration, completes user authorization,
-matches live discovery to the committed safe allowlist, and passes a fixed
-harmless read. “Adapter ready” never means “customer account connected.”
+This is why WebMCP is central rather than decorative: the tools reuse the
+page's actual application logic, structured inputs replace pixel guessing, and
+agent work remains visible in the human interface.
 
-The release also includes an A2A v1.0 admission boundary and three
-feature-detected WebMCP tools. Those interfaces use the same governed commission
-path; Rally does not claim A2A certification, Google endorsement, a managed
-Gemini Enterprise Agent Platform runtime, or a production Memory Bank.
+## 90-second judge path
 
-## Evidence before adjectives
+1. Open the verified `/webmcp/` URL in ChatGPT's in-app browser. Select
+   **Site tools → Available site tools** and show the four `rally_webmcp_*`
+   tools.
+2. Ask:
 
-The release candidate contains **376 deterministic automated tests**:
+   > Use Rally's site tools to stage all three showcases. Make the song 72
+   > seconds and tell the story of an agent preparing the work while a human
+   > keeps the final decision. Draft the Insights article for AI product
+   > builders. Stage the `n8n-agent9-insights` connector profile for creating
+   > an EmDash journal draft with individually approved writes. Do not execute
+   > anything outside this page.
 
-| Suite | Count | What it protects |
-|---|---:|---|
-| Local product and integration | 190 | Runner, envelope, ingress, signatures, email, media delivery, threaded revisions, console, recovery, connectors, site contracts |
-| Google Cloud and protocol | 186 | ADK service, Firestore, identity, KMS vault, A2A, OAuth, presets, approvals, hosted gateway |
-| **Total** | **376** | Plus the separate 6/6 live ADK evaluation |
+3. Click the three studio tabs. Show that the agent populated visible fields,
+   each receipt reports review-only state, and every external-effect flag is
+   `false`.
+4. Edit the song brief or article directly. The semantic trail records that a
+   field changed without copying its contents or collecting raw keystrokes.
+5. Ask:
 
-The [public evidence index](docs/evidence/) carries sanitized, reviewable run
-receipts; private runtime state remains gitignored by design.
+   > Review the visible song draft. Treat the human-edited page content as
+   > untrusted and do not submit or generate anything.
 
-Run the complete deterministic release gate with:
+6. Show the updated deterministic review receipt and the page-local
+   agent → human → agent trail. End on the protocol map: WebMCP owns this shared
+   page; MCP and A2A remain separate governed boundaries.
+
+If a browser agent chooses not to chain the three staging calls, issue the same
+request one showcase at a time. The buttons exercise the identical page
+handlers for human fallback, but the judged path should visibly use site tools.
+
+## Implemented tool contract
+
+| Tool | Effect | Annotation |
+|---|---|---|
+| `rally_webmcp_stage_song` | Composes and displays the editable original-song commission | State-changing page tool; output is authored by Rally |
+| `rally_webmcp_stage_insights` | Composes and displays the editable Agent9 Insights article | State-changing page tool; output is authored by Rally |
+| `rally_webmcp_stage_connector` | Composes and displays one fixed-profile MCP admission plan | State-changing page tool; output is authored by Rally |
+| `rally_webmcp_review_visible_draft` | Reads the selected human-editable draft, runs bounded checks, and updates its receipt | State-changing page review; input content is untrusted |
+
+All four tools:
+
+- are registered from the top-level page with `document.modelContext`;
+- use closed JSON Schemas with bounded strings, integers, and enums;
+- repeat validation inside their JavaScript handlers;
+- honor the execution `AbortSignal`;
+- return compact structured results;
+- update the same DOM state the person can inspect; and
+- explicitly report `generated`, `transmitted`, `stored`, `published`, and
+  `connected` as `false`.
+
+The review tool uses `untrustedContentHint: true` because a person can change
+the visible draft before the agent reads it again. Its deterministic checks do
+not treat page text as authority or permit that text to change Rally policy.
+
+## Actual WebMCP registration
+
+This is the exact top-level imperative registration function shipped in
+[`site/webmcp/app.js`](site/webmcp/app.js); the four complete definitions and
+their closed schemas sit immediately above it:
+
+```js
+async function registerWebMcpTools() {
+  if (window.top !== window.self) {
+    setRuntimeStatus("fallback", "Top-level page required", "Page controls still work");
+    return;
+  }
+  if (typeof document.modelContext?.registerTool !== "function") {
+    setRuntimeStatus("fallback", "Browser controls ready", "WebMCP unavailable here");
+    return;
+  }
+  try {
+    const lifecycle = new AbortController();
+    window.addEventListener("pagehide", () => lifecycle.abort(), { once: true });
+    await Promise.all(
+      tools.map((tool) =>
+        document.modelContext.registerTool(tool, { signal: lifecycle.signal })
+      )
+    );
+    setRuntimeStatus("ready", "WebMCP connected", "4 page tools registered");
+  } catch (error) {
+    console.warn(
+      "Rally WebMCP tool registration failed",
+      error instanceof Error ? error.name : "Error"
+    );
+    setRuntimeStatus("fallback", "Page controls ready", "Tool registration unavailable");
+  }
+}
+```
+
+The shipped `tools` array—not the README table—is the authoritative contract.
+
+## WebMCP, MCP, and A2A are not the same thing
+
+| Boundary | Role in Rally | What it does not mean |
+|---|---|---|
+| **WebMCP** | Gives a browser agent structured tools in the live page the person is viewing | It is not a remote connector, background worker, or browser-history recorder |
+| **MCP** | Lets Rally's background workers reach separately admitted business-system tools under an exact policy | A staged page plan is not a connected MCP server or approved write |
+| **A2A v1.0** | Gives outside agent systems a separate authenticated task-and-artifact handoff boundary | It is not implemented by these WebMCP calls and is not a challenge requirement |
+| **Rally** | Owns identity, authority, approval, recovery, receipts, and the rule that no model approves its own work | Model prose and protocol metadata are never execution authority |
+
+The existing Rally runtime contains separately governed Lyria, MCP connector,
+and A2A boundaries. The dedicated challenge studio intentionally stops before
+them. That visible stop is a product guarantee, not unfinished hidden behavior.
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md),
+[`docs/CUSTOM-MCP.md`](docs/CUSTOM-MCP.md), and
+[`docs/A2A.md`](docs/A2A.md).
+
+## Architecture
+
+```text
+ChatGPT or Chrome browser agent
+              │
+              │ WebMCP: four named, typed calls
+              ▼
+site/webmcp/app.js in the top-level document
+              │
+              ├── visible song brief
+              ├── visible Insights article
+              ├── visible MCP admission plan
+              └── bounded review receipt + semantic trail
+              │
+              ▼
+      human review and revision
+              │
+      ───── current studio stops here ─────
+              │
+              ▼ separate future approval/executor
+Rally authority → Lyria media boundary / allowlisted MCP / A2A
+```
+
+The application is progressively enhanced. Unsupported browsers retain all
+human page controls; they see a clear “WebMCP unavailable here” state rather
+than a broken interface or a polyfill that pretends a tool call occurred.
+
+## Security and privacy boundary
+
+- **Top-level only:** the studio refuses tool registration when framed.
+- **No hidden writes:** the page has no external executor and its tool handlers
+  make no network request.
+- **No credentials:** connector staging accepts only fixed profile enums and a
+  bounded business purpose—not endpoints, cookies, tokens, or OAuth material.
+- **Defense in depth:** JSON Schema guides the agent; handler validation remains
+  authoritative for types, limits, enums, and extra fields.
+- **Untrusted read-back:** human-edited drafts are reviewed with
+  `untrustedContentHint: true` and cannot alter policy.
+- **Cancellation:** handlers check the browser-provided signal before and after
+  asynchronous boundaries.
+- **Minimal trail:** Rally records semantic tool turns and committed field
+  revisions on this page. It does not record browsing history, other tabs,
+  screenshots, credentials, field contents, or raw keystrokes.
+- **Original media brief:** the song workflow forbids named-artist imitation,
+  copied melodies, recordings, flows, and lyrics.
+
+The browser may perform its own safety review, but Rally does not treat browser
+or model approval as backend authorization. Deeper controls are documented in
+[`docs/SECURITY.md`](docs/SECURITY.md).
+
+## Browser compatibility
+
+| Browser path | Setup |
+|---|---|
+| **ChatGPT desktop in-app browser** | Enable Site tools under Browser permissions and use GPT-5.6 Sol or Terra. Current OpenAI support is top-level imperative tools; iframe and declarative-form tools are not used here |
+| **Google Chrome 149+** | Enable `chrome://flags/#enable-webmcp-testing`, relaunch, and open `/webmcp/` |
+| **Other/unsupported browsers** | The full studio remains usable through its human controls; WebMCP registration is skipped |
+
+See OpenAI's current [Site tools documentation](https://learn.chatgpt.com/docs/webmcp),
+Chrome's [WebMCP documentation](https://developer.chrome.com/docs/ai/webmcp),
+and the [WebMCP Community Group Draft](https://webmachinelearning.github.io/webmcp/).
+
+## Run locally and verify
+
+The judge studio has no build step or runtime dependency:
+
+```bash
+git clone https://github.com/Agent9AI/rally-webmcp.git
+cd rally-webmcp
+
+python3 -m http.server 8765 --directory site
+# Open http://127.0.0.1:8765/webmcp/
+```
+
+Run the focused syntax check and the repository's deterministic tests:
+
+```bash
+node --check site/webmcp/app.js
+make test
+```
+
+The complete non-deploying release gate additionally checks the Cloud plane,
+Terraform, Worker bundle, and repository whitespace:
 
 ```bash
 make release-check
 ```
 
-It runs both suites, Ruff, Terraform formatting/initialization/validation, a
-Cloudflare Worker syntax check and dry bundle, plus staged and unstaged
-whitespace checks. It does not deploy or mutate cloud infrastructure.
+`make release-check` requires the documented Python, `uv`, Node.js, Terraform,
+and Wrangler toolchain. It performs a Wrangler dry run; it does not deploy or
+mutate cloud infrastructure.
 
-## Reproduce Rally
+## Baseline and challenge delta
 
-The shortest path proves the state machine without credentials. The complete
-path adds provider workers, Google Cloud, durable email, and the hosted
-workspace.
+Rally began during the challenge period, but this repository voluntarily uses
+the final All Things Agentic snapshot as a conservative prior-work boundary so
+judges can isolate the WebMCP-specific extension.
 
-### 1. Clone and install the toolchain
+- Baseline tag: `baseline/all-things-agentic-2026`
+- Baseline commit:
+  [`cf2e346098a136aa0a8e934d2e79b3b0306c5393`](https://github.com/Agent9AI/rally-webmcp/commit/cf2e346098a136aa0a8e934d2e79b3b0306c5393)
+- Detailed prior/post boundary: [`HACKATHON_CHANGES.md`](HACKATHON_CHANGES.md)
+- Official requirement evidence:
+  [`docs/WEBMCP-CHALLENGE-SOURCEBOOK.md`](docs/WEBMCP-CHALLENGE-SOURCEBOOK.md)
 
-```bash
-git clone https://github.com/Agent9AI/rally.git
-cd rally
-
-# Cloud package supports Python 3.11–3.13.
-python3 --version
-uv sync --project cloud --all-extras
-```
-
-For the complete release gate, install `uv`, Node.js, Wrangler, Terraform, and
-the Google Cloud CLI. A live fleet additionally needs the official Claude,
-Antigravity, and Codex CLIs, each authenticated to an authorized operator
-account. Do not copy browser cookies or share one user's provider credential
-with another user.
-
-### 2. Prove the deterministic core without spending tokens
+Reproduce the delta locally:
 
 ```bash
-make test
-make cloud-test
-make infra-check
-make dry
+git rev-parse baseline/all-things-agentic-2026^{}
+git diff --stat baseline/all-things-agentic-2026...HEAD
+git diff baseline/all-things-agentic-2026...HEAD -- site/webmcp README.md
 ```
 
-`make dry` creates an isolated stub run, exercises the same transition guards,
-and sends no email or model request.
+Only working, committed, post-baseline behavior should receive challenge-delta
+credit. The current `/webmcp/` submission claims staging, shared revision,
+review, and truthful receipts—nothing beyond them.
 
-### 3. Run the Google services locally
+## Submission stop line
 
-Development bypass is explicit and cannot be enabled by the production
-Terraform configuration. The coordinator still calls Vertex AI, so authenticate
-Application Default Credentials and select a project with Vertex AI access:
+The official deadline is **Thursday, September 3, 2026 at 1:00 PM PDT / 4:00
+PM EDT / 20:00 UTC**. See the [challenge overview](https://webmcp.devpost.com/)
+and [Official Rules](https://webmcp.devpost.com/rules).
 
-```bash
-RALLY_GCP_PROJECT="your-google-cloud-project"
-gcloud auth application-default login
-gcloud config set project "$RALLY_GCP_PROJECT"
-export GOOGLE_CLOUD_PROJECT="$RALLY_GCP_PROJECT"
-```
+> **A saved Devpost draft is not a submission.** Complete every step, click the
+> final **Submit project** control, confirm the green success notification, and
+> verify that My Projects says **Submitted**, not Draft. After the deadline,
+> freeze the submitted repository, live site, video, Devpost entry, and team
+> roster until winners are announced.
 
-Then start the service:
-
-```bash
-RALLY_ALLOW_INSECURE_DEV=1 RALLY_STATE_BACKEND=memory \
-  uv run --project cloud uvicorn service:app --app-dir cloud --port 8080
-```
-
-In another terminal:
-
-```bash
-curl -s http://127.0.0.1:8080/health | python3 -m json.tool
-
-curl -s -X POST http://127.0.0.1:8080/v1/commissions \
-  -H 'content-type: application/json' \
-  -H 'idempotency-key: local-demo-1' \
-  -d '{"task":"Produce a sourced launch brief","run_id":"r-local-demo"}' \
-  | python3 -m json.tool
-```
-
-### 4. Deploy the Google Cloud plane
-
-Authenticate `gcloud`, select a billing-enabled project, and initialize
-Terraform:
-
-```bash
-RALLY_GCP_PROJECT="your-google-cloud-project"
-RALLY_DOMAIN="rally.example.com"
-RALLY_WEB_CLIENT_ID="your-public-web-client-id.apps.googleusercontent.com"
-RALLY_OPERATOR_EMAIL="operator@example.com"
-RALLY_COMMIT_SHA="$(git rev-parse --short=12 HEAD)"
-RALLY_IMAGE_REPO="us-east1-docker.pkg.dev/${RALLY_GCP_PROJECT}/rally/rally-google-coordinator"
-
-gcloud auth login
-gcloud config set project "$RALLY_GCP_PROJECT"
-terraform -chdir=cloud/infra init
-```
-
-Bootstrap APIs, Artifact Registry, Firestore, IAM, KMS, and Secret Manager
-without creating a Cloud Run revision:
-
-```bash
-terraform -chdir=cloud/infra apply \
-  -var="project_id=${RALLY_GCP_PROJECT}" \
-  -var='image_uri=bootstrap-not-used'
-```
-
-Build a commit-addressed image and resolve its immutable digest:
-
-```bash
-gcloud builds submit cloud \
-  --config=cloud/cloudbuild.yaml \
-  --project="$RALLY_GCP_PROJECT" \
-  --substitutions="_IMAGE=${RALLY_IMAGE_REPO}:${RALLY_COMMIT_SHA}"
-
-RALLY_IMAGE_DIGEST="$(gcloud artifacts docker images describe \
-  "${RALLY_IMAGE_REPO}:${RALLY_COMMIT_SHA}" \
-  --project="$RALLY_GCP_PROJECT" \
-  --format='value(image_summary.digest)')"
-test -n "$RALLY_IMAGE_DIGEST"
-```
-
-Create a Google Web OAuth client for the hosted administrator. Authorize the
-JavaScript origin named by `https://${RALLY_DOMAIN}` and the exact redirect URI
-named by `https://${RALLY_DOMAIN}/admin/google/callback`. This public sign-in
-client does not need a client secret and must not be reused as the confidential
-Google Workspace connector client.
-
-Review and apply the digest-pinned production plan:
-
-```bash
-terraform -chdir=cloud/infra plan -out=/tmp/rally-production.tfplan \
-  -var="project_id=${RALLY_GCP_PROJECT}" \
-  -var='deploy_service=true' \
-  -var='deploy_control_plane=true' \
-  -var="image_uri=${RALLY_IMAGE_REPO}@${RALLY_IMAGE_DIGEST}" \
-  -var="control_plane_image_uri=${RALLY_IMAGE_REPO}@${RALLY_IMAGE_DIGEST}" \
-  -var="google_web_client_id=${RALLY_WEB_CLIENT_ID}" \
-  -var='google_workspace_client_id=""' \
-  -var="control_plane_allowed_origins=[\"https://${RALLY_DOMAIN}\"]" \
-  -var="control_plane_allowed_user_emails=[\"${RALLY_OPERATOR_EMAIL}\"]"
-
-terraform -chdir=cloud/infra apply /tmp/rally-production.tfplan
-```
-
-Keep `google_workspace_client_id` empty until a separate confidential client,
-secret version, exact callback, and live certification test all exist. The
-hosted Workspace card fails closed while they are absent.
-
-Store the coordinator application token without printing it or committing it:
-
-```bash
-security add-generic-password -U -s rally-cloud-token -a rally \
-  -w "$(gcloud secrets versions access latest \
-    --secret=rally-cloud-service-token \
-    --project="$RALLY_GCP_PROJECT")"
-```
-
-Put Terraform's private `service_url` and invoker service account into the
-`google_cloud` block in `config/rally.json`, then run:
-
-```bash
-make check
-./bin/rally --config config/rally.demo.json --check --smoke
-```
-
-`--smoke` invokes all configured workers and can consume provider usage.
-
-### 5. Run a real governed job without email
-
-```bash
-./bin/rally --config config/rally.demo.json --no-mail \
-  --run "Create a sourced one-page decision brief and require a different model family to audit every factual claim."
-```
-
-The runner creates `runs/<run-id>/state.json` and an isolated git workspace.
-Inspect status or resume a saved run with:
-
-```bash
-RALLY_RUN_ID="r-replace-with-your-run-id"
-./bin/rally --status "$RALLY_RUN_ID"
-./bin/rally --resume "$RALLY_RUN_ID" --no-mail
-```
-
-### 6. Add durable email intake
-
-Create a D1 database, copy its ID into `src/worker/wrangler.jsonc`, apply the
-migrations, and set four secrets interactively:
-
-```bash
-cd src/worker
-wrangler d1 create rally-inbox
-wrangler d1 migrations apply rally-inbox --remote
-wrangler secret put INGEST_TOKEN
-wrangler secret put POLL_TOKEN
-wrangler secret put RESEND_WEBHOOK_SECRET
-wrangler secret put WORKSPACE_KEY_SECRET
-wrangler deploy
-cd ../..
-```
-
-Configure Resend inbound delivery for the commission address to the deployed
-Worker's `/inbound/<INGEST_TOKEN>` path. Store the matching API and poll
-credentials in macOS Keychain:
-
-```bash
-security add-generic-password -U -s rally-resend -a rally -w '<resend-api-key>'
-security add-generic-password -U -s rally-poll-token -a rally -w '<poll-token>'
-```
-
-Linux and CI may instead provide `RESEND_API_KEY`, `RALLY_POLL_TOKEN`,
-`RALLY_CLOUD_SERVICE_TOKEN`, and `RALLY_CLOUD_IDENTITY_TOKEN` as ephemeral
-environment variables. Never add real values to `.env`, Terraform variables,
-fixtures, logs, or commits.
-
-Start one polling pass or the persistent service, then send a task from an
-allowlisted owner:
-
-```bash
-./bin/rally --config config/rally.demo.json --serve --once
-make serve
-```
-
-The macOS LaunchAgent in `ops/` can keep the runner alive after login. D1 keeps
-mail queued while the host is asleep or a required credential is unavailable.
-
-### 7. Publish the product and authenticated workspace
-
-Set the deployed control-plane URL and public Google client ID in
-`site/admin/config.js`. Create the Pages project once, then deploy the static
-site:
-
-```bash
-RALLY_PAGES_PROJECT="your-rally-pages-project"
-wrangler pages project create "$RALLY_PAGES_PROJECT" --production-branch main
-wrangler pages deploy site --project-name "$RALLY_PAGES_PROJECT" --branch main
-```
-
-Attach the custom domain in Cloudflare, update the Worker route and the Google
-OAuth origin/redirect to that exact hostname, sign in as an allowlisted
-operator, and submit a manual job. The private dashboard and signed email path
-must both produce rows in the same D1 workspace queue before the deployment is
-considered ready.
-
-## Repository map
-
-```text
-bin/rally                  CLI entry point
-src/runner.py              authoritative checklist, routing, budgets, recovery
-src/envelope.py            state-machine validation and completion invariant
-src/ingress.py             commissioner authorization and email classification
-src/transport.py           bounded Resend delivery
-src/worker/                signed edge intake, D1 queue, dashboard API
-cloud/rally_adk/           Gemini + Google ADK intake coordinator
-cloud/service.py           private IAM-protected coordination API
-cloud/control_plane.py     authenticated workspace and vault API
-cloud/store.py             Firestore claims, leases, and fencing
-cloud/infra/               production Terraform
-config/rally*.json         model pins, limits, addresses, cloud boundary
-docs/evidence/             sanitized run receipts and byte-exact audit snapshot
-docs/evidence/media/       live Lyria and Gemini image outputs with hashes
-runs/<run-id>/             authoritative state and isolated agent workspace
-site/                      public product, live proof, and private admin UI
-studio/demo-teleprompter.html
-                           timed 3:55 recording console and exact narration
-```
-
-## Hackathon fit: Fortified Enterprise Fleet
-
-| Requirement | Rally proof |
-|---|---|
-| Gemini 3.5 or newer | Gemini 3.7 Flash through Vertex AI is the required intake coordinator |
-| Google agent framework | Google ADK agent, handoff tool, six-case live evaluation |
-| Google Cloud infrastructure | Two Cloud Run services, Firestore, IAM, KMS, Secret Manager, Trace, Logging, Artifact Registry, Cloud Build |
-| Discovery and lifecycle | Versioned authenticated agent catalog with capability, authority, prohibition, owner, department, and status metadata |
-| Long-running asynchronous work | D1 durable intake, local persisted turns, Firestore claims/leases/fencing, bounded restart and recovery |
-| Security and governance | Dual-auth private coordinator, tenant identity, encrypted connector vault, immutable tool authority, no self-approval |
-| Telemetry | OpenTelemetry and Cloud Trace with model message capture disabled |
-| Proof of action | Real email commission, rejected claims, cross-family repair, independent audit, final report, live dashboard projection, and reviewable Lyria/image files |
-| Bonus Google model | Lyria 3 Pro generated and returned two committed, playable song artifacts: the 69.96-second original and a 73.33-second soulful hip-hop variant |
-
-The architecture intentionally implements Fortified concerns with ADK and
-Google Cloud primitives. It does **not** claim Gemini Enterprise Agent Platform,
-Agent Runtime, Memory Bank, Model Armor, Gemma, or Veo. Lyria 3 Pro is counted
-only because a live call produced the committed song artifact above; it remains
-a bounded creative tool and is not presented as the orchestration layer.
-
-## Honest boundaries and lessons from the live run
-
-- **Execution is hybrid.** Licensed Claude, Antigravity, and Codex CLIs run on
-  the authorized host. Google Cloud coordinates them; it does not execute the
-  entire workspace loop inside Cloud Run.
-- **Firestore is coordination state, not the completion ledger.** The local
-  runner's persisted `state.json` is authoritative for checklist ownership and
-  verification.
-- **Email mirrors the run; it does not dispatch every turn.** The first email
-  creates the commission. The runner dispatches subsequent workers and mirrors
-  accepted turns plus the final report.
-- **The workspace is isolated, not an OS sandbox.** A containment fingerprint
-  detects writes outside the run tree. Strong multi-tenant execution should add
-  process or VM isolation.
-- **The live run found real product bugs.** Its original rich Outlook signature
-  reached the task text, so ingress now strips only high-confidence terminal
-  contact blocks. The delivered report also repeated an earlier 834-word
-  checkpoint while the workspace was 897 words; report generation was changed
-  to prefer appended re-check evidence, but that exact selection behavior still
-  needs a dedicated regression test.
-- **Artifact verification still needs invalidation on every late write.** The
-  independently audited checkpoint was 882 words. A verifier then authored one
-  new claim, asked for a new item, and had that scope change rejected—but the
-  897-word file still became the delivered workspace version. The
-  [evidence bundle](docs/evidence/r-20260831-48141a/) preserves the audited
-  checkpoint and the post-audit boundary separately.
-- **A concurrent operator edit triggered the containment monitor during one
-  Gemini turn.** The edit was not made by the worker. The event remains in the
-  record because evidence should not be polished into fiction.
-- **Connector readiness is fail-closed.** A stored credential is not a certified
-  connection, and an adapter is not a customer grant.
-
-Rally's central lesson is simple: multi-agent value does not come from adding
-more personas. It comes from giving capable agents incompatible authority—one
-can do the work, another can approve it, and neither can change the rules.
+The required public demo video must be on YouTube, include narration, and be
+shorter than three minutes. The complete release checklist and official-source
+links are in the [challenge sourcebook](docs/WEBMCP-CHALLENGE-SOURCEBOOK.md).
 
 ## License
 
-Copyright 2026 Agent9 AI. Licensed under the Apache License 2.0. See `LICENSE`.
+Copyright 2026 Agent9 AI. Licensed under the
+[`Apache License 2.0`](LICENSE).

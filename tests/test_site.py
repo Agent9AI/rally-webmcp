@@ -30,8 +30,43 @@ class TestProductSite(unittest.TestCase):
             cls.html = handle.read()
 
     def test_event_copy_is_current_and_stale_event_is_absent(self):
-        self.assertIn("All Things Agentic Hackathon", self.html)
+        self.assertIn("Built for the WebMCP Challenge", self.html)
+        self.assertIn('href="webmcp/">Open the Rally for WebMCP studio', self.html)
         self.assertNotIn("dev" + "fest", self.html.lower())
+
+    def test_dedicated_webmcp_studio_is_judge_ready(self):
+        studio = os.path.join(SITE, "webmcp")
+        for name in ("index.html", "styles.css", "app.js"):
+            path = os.path.join(studio, name)
+            self.assertTrue(os.path.exists(path), name)
+            self.assertGreater(os.path.getsize(path), 500, name)
+        with open(os.path.join(studio, "index.html")) as handle:
+            html = handle.read()
+        with open(os.path.join(studio, "app.js")) as handle:
+            app = handle.read()
+        for phrase in (
+            "The page is the <span>protocol",
+            "Original song",
+            "Insights draft",
+            "MCP onboarding",
+            "A semantic trail, not surveillance",
+            "No network writes",
+        ):
+            self.assertIn(phrase, html)
+        for tool in (
+            "rally_webmcp_stage_song",
+            "rally_webmcp_stage_insights",
+            "rally_webmcp_stage_connector",
+            "rally_webmcp_review_visible_draft",
+        ):
+            self.assertIn(f'name: "{tool}"', app)
+        self.assertEqual(app.count("document.modelContext.registerTool(tool"), 1)
+        self.assertIn("additionalProperties: false", app)
+        self.assertIn("new AbortController()", app)
+        self.assertIn("untrustedContentHint: true", app)
+        self.assertNotIn("navigator.modelContext", app)
+        self.assertNotIn("provideContext", app)
+        self.assertNotIn("fetch(", app)
 
     def test_product_proof_and_honest_boundary_are_visible(self):
         for phrase in (
@@ -65,9 +100,11 @@ class TestProductSite(unittest.TestCase):
             "Agent discovery + task exchange",
             "Linux Foundation open governance",
             "WebMCP enabled",
-            "3 browser tools · human-confirmed",
+            "5 browser tools · human-confirmed",
             "Can a browser agent use Rally directly?",
-            "three WebMCP tools",
+            "five WebMCP tools",
+            "stage a WebMCP Challenge song for Lyria 3 Pro",
+            "review the human-edited creative task",
             "it cannot submit the job",
         ):
             self.assertIn(phrase, self.html)
@@ -161,13 +198,15 @@ class TestProductSite(unittest.TestCase):
             "rally_list_public_runs",
             "rally_inspect_public_run",
             "rally_draft_job",
+            "rally_stage_challenge_song",
+            "rally_review_visible_song_task",
         ):
             self.assertIn(f'name: "{tool}"', app)
         self.assertIn('status: "drafted_not_submitted"', app)
         self.assertIn("human_confirmation_required: true", app)
         self.assertIn("transmitted: false", app)
         self.assertIn("stored: false", app)
-        self.assertIn("readOnlyHint: true, untrustedContentHint: true", app)
+        self.assertGreaterEqual(app.count("readOnlyHint: false, untrustedContentHint: true"), 3)
         self.assertIn("additionalProperties: false", app)
         self.assertIn("closedWebMcpInput", app)
         self.assertIn("maxLength: 2000", app)
@@ -280,7 +319,7 @@ class TestProductSite(unittest.TestCase):
         self.assertNotIn("form-action 'self' https://*.a.run.app", security_headers)
         self.assertIn("/admin/connect/callback*", security_headers)
         self.assertIn("Referrer-Policy: no-referrer", security_headers)
-        self.assertIn("183 runner + ingress + policy + site", self.html)
+        self.assertIn("194 runner + ingress + policy + WebMCP", self.html)
         self.assertIn('href="privacy/"', self.html)
         self.assertIn('href="terms/"', self.html)
         self.assertIn('href="#trust">Security &amp; audit</a>', self.html)
@@ -329,7 +368,7 @@ class TestProductSite(unittest.TestCase):
             "THE ACCOUNTABLE AI TEAM",
             "You already have email",
             "Add accountable AI teammates",
-            "369",
+            "380",
             "6/6",
             "0",
         ):
@@ -499,6 +538,7 @@ class TestProductSite(unittest.TestCase):
             headers,
         )
         self.assertIn("tools=(self)", headers)
+        self.assertIn("Origin-Agent-Cluster: ?1", headers)
         self.assertNotIn("static.cloudflareinsights.com", headers)
         with open(os.path.join(ROOT, "src", "worker", "wrangler.jsonc")) as handle:
             worker_config = json.load(handle)

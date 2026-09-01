@@ -48,6 +48,10 @@ SOULFUL_HIP_HOP_TERMS = re.compile(
     r"\b(?:hip[ -]?hop|soulful|human-feeling|conscious[ -]?rap)\b",
     re.IGNORECASE,
 )
+WEBMCP_CHALLENGE_TERMS = re.compile(
+    r"\b(?:webmcp\s+challenge|rally\s+for\s+webmcp)\b",
+    re.IGNORECASE,
+)
 MAX_MEDIA_BYTES = 6 * 1024 * 1024
 USER_AGENT = "rally/1.0 (+https://github.com/Agent9AI/rally)"
 
@@ -80,6 +84,15 @@ One request becomes a result you can answer for,
 Less managing the machines, more meaning in the work.
 Let the work rally...
 Yeah, let the work hold."""
+
+WEBMCP_CHALLENGE_PROMPT = """Create one fully original English-language song that directly fulfills the complete creative brief below. Follow its requested style, structure, duration, voices, and hook. This song must be specifically and accurately about WebMCP and Rally, not a generic AI, startup, or hackathon anthem.
+
+The lyric must teach these ideas in musical language: WebMCP lets a website expose named, structured browser tools so an agent does not have to guess at pixels; Rally uses those tools to search live public runs, inspect verification evidence, stage visible work, and read back the human's edits; the agent may inspect, prepare, and review, but the human confirms. Tell the real publishing story: together they prepare an Agent9 Insights article and song; after explicit approval, Rally invokes one allowlisted n8n workflow through governed MCP to create an EmDash journal draft on agent9.dev's Cloudflare Workers and D1 site. It must not imply silent publication. Keep the adjacent protocols accurate: Rally's governed server-side MCP gateway connects background workers to n8n, Google Workspace, Slack, GitHub, Cloudflare, BigQuery, and other approved systems. Rally supports A2A v1.0 outside-agent handoffs through its public Agent Card and JSON-RPC and HTTP+JSON interfaces. Rally keeps authority, chain of custody, and independent verification across them; do not imply certification or endorsement.
+
+Use clear, intelligible vocals and a short memorable chorus. Pronounce WebMCP as "web M-C-P." Do not imitate or name a recording artist, borrow lyrics or recordings, claim endorsement, name judges, or add unsupported product claims. Do not say WebMCP itself is Rally's background connector gateway. Preserve the human-confirmation boundary in every line.
+
+Complete Rally creative brief:
+"""
 
 
 class MediaGenerationError(RuntimeError):
@@ -120,6 +133,8 @@ def _image_prompt(request: str) -> str:
 
 
 def _song_prompt(request: str) -> str:
+    if WEBMCP_CHALLENGE_TERMS.search(request):
+        return WEBMCP_CHALLENGE_PROMPT + request
     if (re.search(r"\ball\s+things\s+agentic\b", request, re.IGNORECASE)
             and SOULFUL_HIP_HOP_TERMS.search(request)):
         # This is a named Rally creative preset, not a provider-specific demo

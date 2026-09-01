@@ -53,6 +53,21 @@ class MediaIntentTests(unittest.TestCase):
         self.assertNotIn("Tupac", request["prompt"])
         self.assertNotIn("Common", request["prompt"])
 
+    def test_webmcp_challenge_song_teaches_the_protocol_and_connector_boundary(self):
+        request = media.detect_request(
+            "Create a WebMCP Challenge song for Rally for WebMCP using Lyria 3 Pro"
+        )
+        self.assertEqual(request["kind"], "song")
+        self.assertTrue(request["prompt"].startswith(media.WEBMCP_CHALLENGE_PROMPT))
+        self.assertIn("named, structured browser tools", request["prompt"])
+        self.assertIn("n8n, Google Workspace, Slack, GitHub, Cloudflare, BigQuery", request["prompt"])
+        self.assertIn("allowlisted n8n workflow", request["prompt"])
+        self.assertIn("EmDash journal draft", request["prompt"])
+        self.assertIn("supports A2A v1.0 outside-agent handoffs", request["prompt"])
+        self.assertIn("Do not say WebMCP itself is Rally's background connector gateway", request["prompt"])
+        self.assertNotIn("Tupac", request["prompt"])
+        self.assertNotIn("Coolio", request["prompt"])
+
     def test_analysis_request_does_not_mutate_into_generation(self):
         self.assertIsNone(media.detect_request("Analyze this image for accessibility"))
 

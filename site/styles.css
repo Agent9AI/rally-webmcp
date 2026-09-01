@@ -912,16 +912,17 @@ details p a:hover { color: var(--blue-hover); text-decoration-color: currentColo
 .webmcp-receipt-facts span { color: var(--muted); font-size: .7rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
 .webmcp-receipt-facts b { margin-top: 4px; overflow: hidden; color: var(--ink); font-size: .76rem; text-overflow: ellipsis; white-space: nowrap; }
 .webmcp-review-checks { padding: 14px; border-bottom: 1px solid var(--line-soft); }
-.webmcp-review-checks > header { display: flex; justify-content: space-between; gap: 10px; }
-.webmcp-review-checks > header b { color: var(--ink); font-size: .78rem; }
-.webmcp-review-checks > header span { color: var(--muted); font-size: .72rem; }
+.webmcp-review-heading { display: flex; justify-content: space-between; gap: 10px; }
+.webmcp-review-heading b { color: var(--ink); font-size: .78rem; }
+.webmcp-review-heading span { color: var(--muted); font-size: .72rem; }
 .webmcp-review-checks ul { display: grid; gap: 7px; margin: 10px 0 0; padding: 0; list-style: none; }
 .webmcp-review-checks li { display: grid; grid-template-columns: 20px 1fr; align-items: center; gap: 7px; color: var(--muted); font-size: .75rem; line-height: 1.4; }
 .webmcp-review-checks li span { width: 20px; height: 20px; display: grid; place-items: center; color: var(--muted); border-radius: 50%; background: #e9eef4; font-size: .7rem; font-weight: 800; }
 .webmcp-review-checks li.is-passed span { color: #137333; background: #ceead6; }
 .webmcp-work-dialog .webmcp-collaboration-trace { padding: 14px; border-bottom: 1px solid var(--line-soft); background: #fff; }
-.webmcp-work-dialog .webmcp-collaboration-trace > header b { color: var(--ink); font-size: .78rem; }
-.webmcp-work-dialog .webmcp-collaboration-trace > header span { color: var(--muted); font-size: .72rem; }
+.webmcp-work-dialog .webmcp-trace-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.webmcp-work-dialog .webmcp-trace-heading b { color: var(--ink); font-size: .78rem; }
+.webmcp-work-dialog .webmcp-trace-heading span { color: var(--muted); font-size: .72rem; }
 .webmcp-work-dialog .webmcp-collaboration-trace ol { max-height: 168px; overflow-y: auto; }
 .webmcp-work-dialog .webmcp-trace-event { grid-template-columns: 24px minmax(0, 1fr) auto; }
 .webmcp-work-dialog .webmcp-trace-event > span:first-child { width: 24px; height: 24px; font-size: .7rem; }

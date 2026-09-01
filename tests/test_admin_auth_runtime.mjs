@@ -305,6 +305,14 @@ for (const call of calls.filter((call) => !call.url.pathname.endsWith("/magic-li
   assert(!call.url.href.includes(validToken), "key leaked into a URL");
 }
 
+const commissionHub = elementFor(".commission-hub");
+commissionHub.classList.add("is-collapsed");
+await elementFor("[data-open-research-reserve]").dispatch("click");
+assert.equal(commissionHub.classList.contains("is-collapsed"), false);
+assert.equal(elementFor("[data-research-panel]").hidden, false);
+assert.equal(elementFor("[data-open-research-reserve]").getAttribute("aria-expanded"), "true");
+assert.equal(elementFor("[data-research-arm]").focused, true);
+
 const prepareResearch = registrations.get("rally_prepare_job").tool;
 const startVisible = registrations.get("rally_start_visible_job").tool;
 const prepared = await prepareResearch.execute({

@@ -127,6 +127,12 @@ main { max-width: 1520px; margin: 0 auto; padding: 44px 28px 100px; }
 .commission-trust { display: inline-flex; align-items: center; gap: 8px; flex: none; padding: 10px 13px; color: #c7f3df; border: 1px solid rgba(99,210,165,.28); border-radius: 999px; background: rgba(26,128,89,.16); font-size: .84rem; font-weight: 750; white-space: nowrap; }
 .commission-trust svg { width: 15px; height: 15px; fill: none; stroke: #63d2a5; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .commission-intro-actions { display: flex; align-items: center; gap: 9px; flex: none; }
+.research-reserve-shortcut { min-height: 42px; display: grid; align-content: center; gap: 1px; padding: 5px 13px; cursor: pointer; color: #e1ebfa; border: 1px solid rgba(255,255,255,.22); border-radius: 12px; background: rgba(255,255,255,.08); text-align: left; }
+.research-reserve-shortcut span { font-size: .65rem; font-weight: 650; }
+.research-reserve-shortcut b { color: #fff; font-size: .78rem; }
+.research-reserve-shortcut:hover { border-color: rgba(255,255,255,.42); background: rgba(255,255,255,.13); }
+.research-reserve-shortcut[data-state="armed"] { color: #ffe7ad; border-color: rgba(255,199,84,.66); background: rgba(151,74,0,.42); }
+.research-reserve-shortcut[data-state="armed"] b { color: #fff3cf; }
 .commission-setup-toggle { min-height: 40px; padding: 0 14px; cursor: pointer; color: #e1ebfa; border: 1px solid rgba(255,255,255,.22); border-radius: 999px; background: rgba(255,255,255,.08); font-size: .84rem; font-weight: 750; }
 .commission-setup-toggle:hover { color: #fff; border-color: rgba(255,255,255,.42); background: rgba(255,255,255,.13); }
 .commission-hub.is-collapsed .assistant-setup { display: none; }
@@ -611,6 +617,8 @@ main { max-width: 1520px; margin: 0 auto; padding: 44px 28px 100px; }
   .work-metrics > div:nth-child(2) { border-right: 0; }
   .work-metrics > div:nth-child(-n+2) { border-bottom: 1px solid var(--line-soft); }
   .commission-intro { align-items: flex-start; flex-direction: column; padding: 22px 18px; }
+  .commission-intro-actions { width: 100%; flex-wrap: wrap; }
+  .research-reserve-shortcut { flex: 1 1 145px; }
   .assistant-setup { grid-template-columns: 1fr; }
   .setup-step { min-height: 0; padding: 19px 17px; border-right: 0; border-bottom: 1px solid var(--line-soft); }
   .setup-step:nth-child(2), .setup-step:nth-child(n+3) { border-bottom: 1px solid var(--line-soft); }

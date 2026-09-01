@@ -93,6 +93,8 @@
   const researchPanel = document.querySelector("[data-research-panel]");
   const researchArm = document.querySelector("[data-research-arm]");
   const researchState = document.querySelector("[data-research-state]");
+  const researchShortcut = document.querySelector("[data-open-research-reserve]");
+  const researchShortcutState = document.querySelector("[data-research-shortcut-state]");
   const teammateList = document.querySelector("[data-teammate-list]");
   const teammateForm = document.querySelector("[data-teammate-form]");
   const teammateFormTitle = document.querySelector("#teammate-form-title");
@@ -642,6 +644,7 @@
   function setResearchPanel(open, { focus = false } = {}) {
     researchPanel.hidden = !open;
     researchCover.setAttribute("aria-expanded", String(open));
+    researchShortcut.setAttribute("aria-expanded", String(open));
     if (focus) focusSoon(open ? researchArm : researchCover);
   }
 
@@ -655,6 +658,8 @@
     researchState.textContent = message || (armed
       ? "Ruflo armed · this run only"
       : "Standard · Ruflo off");
+    researchShortcut.dataset.state = armed ? "armed" : "sealed";
+    researchShortcutState.textContent = armed ? "Ruflo armed" : "Ruflo off";
     composerResearch.textContent = armed
       ? "Ruflo research · this run only"
       : "Standard research";
@@ -2408,6 +2413,16 @@
   researchCover.addEventListener("click", () => {
     const open = researchCover.getAttribute("aria-expanded") !== "true";
     setResearchPanel(open, { focus: true });
+  });
+  researchShortcut.addEventListener("click", () => {
+    assistantSetupManuallyToggled = true;
+    setAssistantSetupCollapsed(false);
+    setResearchPanel(true);
+    researchReserve.scrollIntoView({
+      behavior: reducedMotion.matches ? "auto" : "smooth",
+      block: "center",
+    });
+    focusSoon(researchArm);
   });
   researchArm.addEventListener("click", async () => {
     if (selectedResearchMode === "ruflo") {

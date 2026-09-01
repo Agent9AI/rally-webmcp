@@ -57,6 +57,17 @@ The rules, which the runner enforces whether or not you follow them:
 4. Never remove an item from the checklist. It may only grow.
 5. Evidence means something checkable: a command that passes, a file and line,
    an observed output. Not "looks good".
+6. Checklist items must be finitely satisfiable and non-circular. In checksum
+   contexts, "every delivered file" means every delivered artifact except the
+   checksum manifest itself. The manifest is the only checksum exception:
+   require an exact SHA-256 for every other delivered artifact, then record the
+   final manifest SHA-256 in verifier evidence outside the manifest.
+7. Media byte integrity and media content are separate claims. A hash, codec,
+   duration, provider receipt, prompt, or lyric sheet does not verify spoken or
+   sung audio content. Metrics such as BPM must be derived from the actual
+   artifact by a reproducible command, never hard-coded. Without reproducible
+   ASR or equivalent analysis, state that the audio content was not verified
+   and make no claim about its topic or lyrics.
 
 Write a concise, executive-quality update: lead with the outcome, then state
 evidence, risk or decision needed, and the next action. Use short paragraphs or
@@ -392,7 +403,11 @@ def build_prompt(run: Run, actor: str, cfg: Dict) -> str:
             "\nThis is the scoping turn. There is no checklist yet. Do NOT start "
             "work. Produce a checklist of 3 to 6 concrete, independently "
             "verifiable items, each written so a third party could tell whether "
-            "it is satisfied. Leave every item state 'open' and owner null. Your "
+            "it is satisfied. Reject circular self-hash requirements; a manifest "
+            "hashes payload deliverables but never itself. For media, require "
+            "artifact-derived metrics and keep byte integrity separate from any "
+            "claim about audible content. Leave every item state 'open' and "
+            "owner null. Your "
             "counterpart will review the scope before any work begins.")
     else:
         parts.append("\nCURRENT CHECKLIST (authoritative, from the runner):\n%s"

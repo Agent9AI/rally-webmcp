@@ -815,6 +815,37 @@ class DurableIngressTests(unittest.TestCase):
         self.assertIn("not completion proof", prompt)
         self.assertIn("different model family must still verify", prompt)
 
+    def test_manifest_and_audio_evidence_policy_avoids_self_hash_deadlock(self):
+        cfg = runtime_config()
+        run = runner.Run.create("Create a song", self.tmp.name, cfg)
+        scoping_prompt = runner.build_prompt(run, "claude", cfg)
+        run.s["checklist"] = [{
+            "id": "c1",
+            "description": "Manifest lists every delivered file with sha256",
+            "state": "claimed",
+            "owner": "agy",
+            "verified_by": None,
+            "evidence": "manifest omitted itself",
+            "rejections": 1,
+        }]
+        verifier_prompt = runner.build_prompt(run, "codex", cfg)
+
+        for prompt in (scoping_prompt, verifier_prompt):
+            self.assertIn(
+                '"every delivered file" means every delivered artifact except the',
+                prompt,
+            )
+            self.assertIn("checksum manifest itself", prompt)
+            self.assertIn("The manifest is the only checksum exception", prompt)
+            self.assertIn("exact SHA-256 for every other delivered artifact", prompt)
+            self.assertIn("Media byte integrity and media content are separate claims", prompt)
+            self.assertIn("A hash, codec,", prompt)
+            self.assertIn("does not verify spoken or", prompt)
+            self.assertIn("sung audio content", prompt)
+            self.assertIn("BPM must be derived from the actual", prompt)
+            self.assertIn("audio content was not verified", prompt)
+            self.assertIn("make no claim about its topic or lyrics", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()
